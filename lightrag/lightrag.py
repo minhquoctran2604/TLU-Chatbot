@@ -290,11 +290,11 @@ class LightRAG:
     embedding_token_limit: int | None = field(default=None, init=False)
     """Token limit for embedding model. Set automatically from embedding_func.max_token_size in __post_init__."""
 
-    embedding_batch_num: int = field(default=int(os.getenv("EMBEDDING_BATCH_NUM", 10)))
+    embedding_batch_num: int = field(default=int(os.getenv("EMBEDDING_BATCH_NUM", 100)))
     """Batch size for embedding computations."""
 
     embedding_func_max_async: int = field(
-        default=int(os.getenv("EMBEDDING_FUNC_MAX_ASYNC", 8))
+        default=int(os.getenv("EMBEDDING_FUNC_MAX_ASYNC", 1))
     )
     """Maximum number of concurrent embedding function calls."""
 
@@ -1099,19 +1099,15 @@ class LightRAG:
         # Direct imports for default storage implementations
         if storage_name == "JsonKVStorage":
             from lightrag.kg.json_kv_impl import JsonKVStorage
-
             return JsonKVStorage
         elif storage_name == "NanoVectorDBStorage":
             from lightrag.kg.nano_vector_db_impl import NanoVectorDBStorage
-
             return NanoVectorDBStorage
         elif storage_name == "NetworkXStorage":
             from lightrag.kg.networkx_impl import NetworkXStorage
-
             return NetworkXStorage
         elif storage_name == "JsonDocStatusStorage":
             from lightrag.kg.json_doc_status_impl import JsonDocStatusStorage
-
             return JsonDocStatusStorage
         else:
             # Fallback to dynamic import for other storage implementations
@@ -1203,9 +1199,7 @@ class LightRAG:
         )
 
     # TODO: deprecated, use ainsert instead
-    async def ainsert_custom_chunks(
-        self, full_text: str, text_chunks: list[str], doc_id: str | None = None
-    ) -> None:
+    async def ainsert_custom_chunks(self, full_text: str, text_chunks: list[str], doc_id: str | None = None ) -> None:
         update_storage = False
         try:
             # Clean input texts
@@ -1243,16 +1237,14 @@ class LightRAG:
 
             doc_ids = set(inserting_chunks.keys())
             add_chunk_keys = await self.text_chunks.filter_keys(doc_ids)
-            inserting_chunks = {
-                k: v for k, v in inserting_chunks.items() if k in add_chunk_keys
-            }
+            inserting_chunks = { k: v for k, v in inserting_chunks.items() if k in add_chunk_keys }
             if not len(inserting_chunks):
                 logger.warning("All chunks are already in the storage.")
                 return
 
             tasks = [
                 self.chunks_vdb.upsert(inserting_chunks),
-                self._process_extract_entities(inserting_chunks),
+                # self._process_extract_entities(inserting_chunks), # vi co graph san roi ko can phai extract nua
                 self.full_docs.upsert(new_docs),
                 self.text_chunks.upsert(inserting_chunks),
             ]

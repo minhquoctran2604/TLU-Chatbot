@@ -52,9 +52,7 @@ class NanoVectorDBStorage(BaseVectorStorage):
             workspace_dir = working_dir
 
         os.makedirs(workspace_dir, exist_ok=True)
-        self._client_file_name = os.path.join(
-            workspace_dir, f"vdb_{self.namespace}.json"
-        )
+        self._client_file_name = os.path.join( workspace_dir, f"vdb_{self.namespace}.json" )
 
         self._max_batch_size = self.global_config["embedding_batch_num"]
 
@@ -70,9 +68,7 @@ class NanoVectorDBStorage(BaseVectorStorage):
             self.namespace, workspace=self.workspace
         )
         # Get the storage lock for use in other methods
-        self._storage_lock = get_namespace_lock(
-            self.namespace, workspace=self.workspace
-        )
+        self._storage_lock = get_namespace_lock( self.namespace, workspace=self.workspace )
 
     async def _get_client(self):
         """Check if the storage should be reloaded"""

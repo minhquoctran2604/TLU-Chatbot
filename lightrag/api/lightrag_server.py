@@ -319,6 +319,7 @@ def create_app(args):
         "aws_bedrock",
         "jina",
         "gemini",
+        "huggingface",
     ]:
         raise Exception("embedding binding not supported")
 
@@ -326,7 +327,7 @@ def create_app(args):
     if args.llm_binding_host is None:
         args.llm_binding_host = get_default_host(args.llm_binding)
 
-    if args.embedding_binding_host is None:
+    if args.embedding_binding_host is None and args.embedding_binding != "huggingface":
         args.embedding_binding_host = get_default_host(args.embedding_binding)
 
     # Add SSL validation
@@ -484,9 +485,7 @@ def create_app(args):
     # Create working directory if it doesn't exist
     Path(args.working_dir).mkdir(parents=True, exist_ok=True)
 
-    def create_optimized_openai_llm_func(
-        config_cache: LLMConfigCache, args, llm_timeout: int
-    ):
+    def create_optimized_openai_llm_func( config_cache: LLMConfigCache, args, llm_timeout: int ):
         """Create optimized OpenAI LLM function with pre-processed configuration"""
 
         async def optimized_openai_alike_model_complete(
@@ -521,9 +520,7 @@ def create_app(args):
 
         return optimized_openai_alike_model_complete
 
-    def create_optimized_azure_openai_llm_func(
-        config_cache: LLMConfigCache, args, llm_timeout: int
-    ):
+    def create_optimized_azure_openai_llm_func( config_cache: LLMConfigCache, args, llm_timeout: int ):
         """Create optimized Azure OpenAI LLM function with pre-processed configuration"""
 
         async def optimized_azure_openai_model_complete(
@@ -615,9 +612,7 @@ def create_app(args):
                 return bedrock_model_complete  # Already defined locally
             elif binding == "azure_openai":
                 # Use optimized function with pre-processed configuration
-                return create_optimized_azure_openai_llm_func(
-                    config_cache, args, llm_timeout
-                )
+                return create_optimized_azure_openai_llm_func( config_cache, args, llm_timeout )
             elif binding == "gemini":
                 return create_optimized_gemini_llm_func(config_cache, args, llm_timeout)
             else:  # openai and compatible
@@ -704,6 +699,10 @@ def create_app(args):
                 from lightrag.llm.lollms import lollms_embed
 
                 provider_func = lollms_embed
+            elif binding == "huggingface":
+                # HuggingFace sentence-transformers: no provider_func needed,
+                # handled directly in optimized_embedding_function below
+                provider_func = None
 
             # Extract attributes if provider is an EmbeddingFunc
             if provider_func and isinstance(provider_func, EmbeddingFunc):
@@ -844,6 +843,20 @@ def create_app(args):
                     if model:
                         kwargs["model"] = model
                     return await actual_func(**kwargs)
+                elif binding == "huggingface":
+                    import numpy as np
+                    from sentence_transformers import SentenceTransformer
+
+                    # Lazy-load model once (cached after first call)
+                    if not hasattr(optimized_embedding_function, "_hf_model"):
+                        hf_model_name = model or "sentence-transformers/all-MiniLM-L6-v2"
+                        logger.info(f"Loading HuggingFace embedding model: {hf_model_name}")
+                        optimized_embedding_function._hf_model = SentenceTransformer(hf_model_name)
+
+                    embeddings = optimized_embedding_function._hf_model.encode(
+                        texts, normalize_embeddings=True
+                    )
+                    return np.array(embeddings)
                 else:  # openai and compatible
                     from lightrag.llm.openai import openai_embed
 
@@ -1083,6 +1096,11 @@ def create_app(args):
             },
             ollama_server_infos=ollama_server_infos,
         )
+
+        # Replace default chunking with Docling HybridChunker
+        from lightrag.hybrid_chunking import build_hybrid_chunking_func
+        rag.chunking_func = build_hybrid_chunking_func(max_tokens=512)
+
     except Exception as e:
         logger.error(f"Failed to initialize LightRAG: {e}")
         raise
@@ -1274,9 +1292,9 @@ def create_app(args):
                     "enable_rerank": rerank_model_func is not None,
                     "rerank_binding": args.rerank_binding,
                     "rerank_model": args.rerank_model if rerank_model_func else None,
-                    "rerank_binding_host": args.rerank_binding_host
-                    if rerank_model_func
-                    else None,
+                    "rerank_binding_host": (
+                        args.rerank_binding_host if rerank_model_func else None
+                    ),
                     # Environment variable status (requested configuration)
                     "summary_language": args.summary_language,
                     "force_llm_summary_on_merge": args.force_llm_summary_on_merge,

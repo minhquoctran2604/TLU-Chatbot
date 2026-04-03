@@ -427,127 +427,146 @@ class Neo4JStorage(BaseGraphStorage):
     @READ_RETRY
     async def has_node(self, node_id: str) -> bool:
         """
-        Check if a node with the given label exists in the database
+        Check if a node with the given id exists in the database.
+        Searches across all TLU node types: Person, Document, Topic, Major, Degree.
 
         Args:
-            node_id: Label of the node to check
+            node_id: The node identifier to check (matches entity_id, id, or name)
 
         Returns:
             bool: True if node exists, False otherwise
 
         Raises:
-            ValueError: If node_id is invalid
             Exception: If there is an error executing the query
         """
-        workspace_label = self._get_workspace_label()
         async with self._driver.session(
             database=self._DATABASE, default_access_mode="READ"
         ) as session:
             result = None
             try:
-                query = f"MATCH (n:`{workspace_label}` {{entity_id: $entity_id}}) RETURN count(n) > 0 AS node_exists"
-                result = await session.run(query, entity_id=node_id)
+                query = """
+                MATCH (n)
+                WHERE (n:Person AND n.name = $node_id)
+                   OR (n:Document AND n.id = $node_id)
+                   OR (n:Topic AND n.name = $node_id)
+                   OR (n:Major AND n.name = $node_id)
+                   OR (n:Degree AND n.name = $node_id)
+                   OR n.entity_id = $node_id
+                RETURN count(n) > 0 AS node_exists
+                """
+                result = await session.run(query, node_id=node_id)
                 single_result = await result.single()
-                await result.consume()  # Ensure result is fully consumed
-                return single_result["node_exists"]
+                await result.consume()
+                return single_result["node_exists"] if single_result else False
             except Exception as e:
                 logger.error(
                     f"[{self.workspace}] Error checking node existence for {node_id}: {str(e)}"
                 )
                 if result is not None:
-                    await result.consume()  # Ensure results are consumed even on error
+                    await result.consume()
                 raise
 
     @READ_RETRY
     async def has_edge(self, source_node_id: str, target_node_id: str) -> bool:
         """
-        Check if an edge exists between two nodes
+        Check if an edge exists between two nodes.
+        Searches across all edge types: WROTE, ADVISED, HAS_TOPIC, BELONGS_TO_MAJOR, HAS_DEGREE.
 
         Args:
-            source_node_id: Label of the source node
-            target_node_id: Label of the target node
+            source_node_id: Identifier of the source node (entity_id, id, or name)
+            target_node_id: Identifier of the target node (entity_id, id, or name)
 
         Returns:
             bool: True if edge exists, False otherwise
 
         Raises:
-            ValueError: If either node_id is invalid
             Exception: If there is an error executing the query
         """
-        workspace_label = self._get_workspace_label()
         async with self._driver.session(
             database=self._DATABASE, default_access_mode="READ"
         ) as session:
             result = None
             try:
-                query = (
-                    f"MATCH (a:`{workspace_label}` {{entity_id: $source_entity_id}})-[r]-(b:`{workspace_label}` {{entity_id: $target_entity_id}}) "
-                    "RETURN COUNT(r) > 0 AS edgeExists"
-                )
+                query = """
+                MATCH (a)-[r]-(b)
+                WHERE ((a:Person AND a.name = $source_node_id)
+                    OR (a:Document AND a.id = $source_node_id)
+                    OR (a:Topic AND a.name = $source_node_id)
+                    OR (a:Major AND a.name = $source_node_id)
+                    OR (a:Degree AND a.name = $source_node_id)
+                    OR a.entity_id = $source_node_id)
+                  AND ((b:Person AND b.name = $target_node_id)
+                    OR (b:Document AND b.id = $target_node_id)
+                    OR (b:Topic AND b.name = $target_node_id)
+                    OR (b:Major AND b.name = $target_node_id)
+                    OR (b:Degree AND b.name = $target_node_id)
+                    OR b.entity_id = $target_node_id)
+                RETURN COUNT(r) > 0 AS edgeExists
+                """
                 result = await session.run(
                     query,
-                    source_entity_id=source_node_id,
-                    target_entity_id=target_node_id,
+                    source_node_id=source_node_id,
+                    target_node_id=target_node_id,
                 )
                 single_result = await result.single()
-                await result.consume()  # Ensure result is fully consumed
-                return single_result["edgeExists"]
+                await result.consume()
+                return single_result["edgeExists"] if single_result else False
             except Exception as e:
                 logger.error(
                     f"[{self.workspace}] Error checking edge existence between {source_node_id} and {target_node_id}: {str(e)}"
                 )
                 if result is not None:
-                    await result.consume()  # Ensure results are consumed even on error
+                    await result.consume()
                 raise
 
     @READ_RETRY
     async def get_node(self, node_id: str) -> dict[str, str] | None:
-        """Get node by its label identifier, return only node properties
+        """Get node by its identifier, return only node properties.
+        Searches across all TLU node types: Person, Document, Topic, Major, Degree.
 
         Args:
-            node_id: The node label to look up
+            node_id: The node identifier to look up (matches entity_id, id, or name)
 
         Returns:
-            dict: Node properties if found
+            dict: Node properties if found, with 'entity_id' added for LightRAG compatibility
             None: If node not found
 
         Raises:
-            ValueError: If node_id is invalid
             Exception: If there is an error executing the query
         """
-        workspace_label = self._get_workspace_label()
         async with self._driver.session(
             database=self._DATABASE, default_access_mode="READ"
         ) as session:
             try:
-                query = (
-                    f"MATCH (n:`{workspace_label}` {{entity_id: $entity_id}}) RETURN n"
-                )
-                result = await session.run(query, entity_id=node_id)
+                query = """
+                MATCH (n)
+                WHERE (n:Person AND n.name = $node_id)
+                   OR (n:Document AND n.id = $node_id)
+                   OR (n:Topic AND n.name = $node_id)
+                   OR (n:Major AND n.name = $node_id)
+                   OR (n:Degree AND n.name = $node_id)
+                   OR n.entity_id = $node_id
+                RETURN n
+                """
+                result = await session.run(query, node_id=node_id)
                 try:
-                    records = await result.fetch(
-                        2
-                    )  # Get 2 records for duplication check
+                    records = await result.fetch(2)
 
                     if len(records) > 1:
                         logger.warning(
-                            f"[{self.workspace}] Multiple nodes found with label '{node_id}'. Using first node."
+                            f"[{self.workspace}] Multiple nodes found with id '{node_id}'. Using first node."
                         )
                     if records:
                         node = records[0]["n"]
                         node_dict = dict(node)
-                        # Remove workspace label from labels list if it exists
-                        if "labels" in node_dict:
-                            node_dict["labels"] = [
-                                label
-                                for label in node_dict["labels"]
-                                if label != workspace_label
-                            ]
+                        # Add entity_id for LightRAG compatibility
+                        if "entity_id" not in node_dict:
+                            node_dict["entity_id"] = node_id
                         # logger.debug(f"Neo4j query node {query} return: {node_dict}")
                         return node_dict
                     return None
                 finally:
-                    await result.consume()  # Ensure result is fully consumed
+                    await result.consume()
             except Exception as e:
                 logger.error(
                     f"[{self.workspace}] Error getting node for {node_id}: {str(e)}"
@@ -571,13 +590,19 @@ class Neo4JStorage(BaseGraphStorage):
         ) as session:
             query = f"""
             UNWIND $node_ids AS id
-            MATCH (n:`{workspace_label}` {{entity_id: id}})
-            RETURN n.entity_id AS entity_id, n
+            MATCH (n)
+            WHERE (n:Person AND n.name = id)
+            OR (n:Document AND n.id = id)
+            OR (n:Topic AND n.name = id)
+            OR (n:Major AND n.name = id)
+            OR (n:Degree AND n.name = id)
+            OR (n:`{workspace_label}` AND n.entity_id = id)
+            RETURN id AS requested_id, n
             """
             result = await session.run(query, node_ids=node_ids)
             nodes = {}
             async for record in result:
-                entity_id = record["entity_id"]
+                entity_id = record["requested_id"]
                 node = record["n"]
                 node_dict = dict(node)
                 # Remove the workspace label if present in a 'labels' property
@@ -593,47 +618,43 @@ class Neo4JStorage(BaseGraphStorage):
 
     @READ_RETRY
     async def node_degree(self, node_id: str) -> int:
-        """Get the degree (number of relationships) of a node with the given label.
-        If multiple nodes have the same label, returns the degree of the first node.
-        If no node is found, returns 0.
+        """Get the degree (number of relationships) of a node.
+        Searches across all TLU node types.
 
         Args:
-            node_id: The label of the node
+            node_id: The node identifier (entity_id, id, or name)
 
         Returns:
             int: The number of relationships the node has, or 0 if no node found
 
         Raises:
-            ValueError: If node_id is invalid
             Exception: If there is an error executing the query
         """
-        workspace_label = self._get_workspace_label()
         async with self._driver.session(
             database=self._DATABASE, default_access_mode="READ"
         ) as session:
             try:
-                query = f"""
-                    MATCH (n:`{workspace_label}` {{entity_id: $entity_id}})
-                    OPTIONAL MATCH (n)-[r]-()
-                    RETURN COUNT(r) AS degree
+                query = """
+                    MATCH (n)-[r]-()
+                    WHERE (n:Person AND n.name = $node_id)
+                       OR (n:Document AND n.id = $node_id)
+                       OR (n:Topic AND n.name = $node_id)
+                       OR (n:Major AND n.name = $node_id)
+                       OR (n:Degree AND n.name = $node_id)
+                       OR n.entity_id = $node_id
+                    RETURN COUNT(DISTINCT r) AS degree
                 """
-                result = await session.run(query, entity_id=node_id)
+                result = await session.run(query, node_id=node_id)
                 try:
                     record = await result.single()
 
                     if not record:
-                        logger.warning(
-                            f"[{self.workspace}] No node found with label '{node_id}'"
-                        )
                         return 0
 
                     degree = record["degree"]
-                    # logger.debug(
-                    #     f"[{self.workspace}] Neo4j query node degree for {node_id} return: {degree}"
-                    # )
                     return degree
                 finally:
-                    await result.consume()  # Ensure result is fully consumed
+                    await result.consume()
             except Exception as e:
                 logger.error(
                     f"[{self.workspace}] Error getting node degree for {node_id}: {str(e)}"
@@ -644,39 +665,40 @@ class Neo4JStorage(BaseGraphStorage):
     async def node_degrees_batch(self, node_ids: list[str]) -> dict[str, int]:
         """
         Retrieve the degree for multiple nodes in a single query using UNWIND.
+        Searches across all TLU node types.
 
         Args:
-            node_ids: List of node labels (entity_id values) to look up.
+            node_ids: List of node identifiers (entity_id, id, or name values).
 
         Returns:
             A dictionary mapping each node_id to its degree (number of relationships).
             If a node is not found, its degree will be set to 0.
         """
-        workspace_label = self._get_workspace_label()
         async with self._driver.session(
             database=self._DATABASE, default_access_mode="READ"
         ) as session:
-            query = f"""
+            query = """
                 UNWIND $node_ids AS id
-                MATCH (n:`{workspace_label}` {{entity_id: id}})
-                RETURN n.entity_id AS entity_id, count {{ (n)--() }} AS degree;
+                MATCH (n)-[r]-()
+                WHERE (n:Person AND n.name = id)
+                   OR (n:Document AND n.id = id)
+                   OR (n:Topic AND n.name = id)
+                   OR (n:Major AND n.name = id)
+                   OR (n:Degree AND n.name = id)
+                   OR n.entity_id = id
+                WITH id, COUNT(DISTINCT r) AS degree
+                RETURN id, degree
             """
             result = await session.run(query, node_ids=node_ids)
             degrees = {}
             async for record in result:
-                entity_id = record["entity_id"]
-                degrees[entity_id] = record["degree"]
-            await result.consume()  # Ensure result is fully consumed
+                degrees[record["id"]] = record["degree"]
+            await result.consume()
 
-            # For any node_id that did not return a record, set degree to 0.
             for nid in node_ids:
                 if nid not in degrees:
-                    logger.warning(
-                        f"[{self.workspace}] No node found with label '{nid}'"
-                    )
                     degrees[nid] = 0
 
-            # logger.debug(f"[{self.workspace}] Neo4j batch node degree query returned: {degrees}")
             return degrees
 
     async def edge_degree(self, src_id: str, tgt_id: str) -> int:
@@ -731,31 +753,43 @@ class Neo4JStorage(BaseGraphStorage):
         self, source_node_id: str, target_node_id: str
     ) -> dict[str, str] | None:
         """Get edge properties between two nodes.
+        Returns edge type (WROTE, ADVISED, HAS_TOPIC, BELONGS_TO_MAJOR, HAS_DEGREE) in the result.
 
         Args:
-            source_node_id: Label of the source node
-            target_node_id: Label of the target node
+            source_node_id: Identifier of the source node (entity_id, id, or name)
+            target_node_id: Identifier of the target node (entity_id, id, or name)
 
         Returns:
-            dict: Edge properties if found, default properties if not found or on error
+            dict: Edge properties including 'type' (relationship type) if found
+            None: If no edge found
 
         Raises:
-            ValueError: If either node_id is invalid
             Exception: If there is an error executing the query
         """
-        workspace_label = self._get_workspace_label()
         try:
             async with self._driver.session(
                 database=self._DATABASE, default_access_mode="READ"
             ) as session:
-                query = f"""
-                MATCH (start:`{workspace_label}` {{entity_id: $source_entity_id}})-[r]-(end:`{workspace_label}` {{entity_id: $target_entity_id}})
-                RETURN properties(r) as edge_properties
+                query = """
+                MATCH (a)-[r]-(b)
+                WHERE ((a:Person AND a.name = $source_node_id)
+                    OR (a:Document AND a.id = $source_node_id)
+                    OR (a:Topic AND a.name = $source_node_id)
+                    OR (a:Major AND a.name = $source_node_id)
+                    OR (a:Degree AND a.name = $source_node_id)
+                    OR a.entity_id = $source_node_id)
+                  AND ((b:Person AND b.name = $target_node_id)
+                    OR (b:Document AND b.id = $target_node_id)
+                    OR (b:Topic AND b.name = $target_node_id)
+                    OR (b:Major AND b.name = $target_node_id)
+                    OR (b:Degree AND b.name = $target_node_id)
+                    OR b.entity_id = $target_node_id)
+                RETURN type(r) as edge_type, properties(r) as edge_properties
                 """
                 result = await session.run(
                     query,
-                    source_entity_id=source_node_id,
-                    target_entity_id=target_node_id,
+                    source_node_id=source_node_id,
+                    target_node_id=target_node_id,
                 )
                 try:
                     records = await result.fetch(2)
@@ -766,8 +800,10 @@ class Neo4JStorage(BaseGraphStorage):
                         )
                     if records:
                         try:
+                            edge_type = records[0]["edge_type"]
                             edge_result = dict(records[0]["edge_properties"])
-                            # logger.debug(f"Result: {edge_result}")
+                            # Add edge type to result
+                            edge_result["type"] = edge_type
                             # Ensure required keys exist with defaults
                             required_keys = {
                                 "weight": 1.0,
@@ -782,31 +818,23 @@ class Neo4JStorage(BaseGraphStorage):
                                         f"[{self.workspace}] Edge between {source_node_id} and {target_node_id} "
                                         f"missing {key}, using default: {default_value}"
                                     )
-
-                            # logger.debug(
-                            #     f"{inspect.currentframe().f_code.co_name}:query:{query}:result:{edge_result}"
-                            # )
                             return edge_result
                         except (KeyError, TypeError, ValueError) as e:
                             logger.error(
                                 f"[{self.workspace}] Error processing edge properties between {source_node_id} "
                                 f"and {target_node_id}: {str(e)}"
                             )
-                            # Return default edge properties on error
                             return {
                                 "weight": 1.0,
                                 "source_id": None,
                                 "description": None,
                                 "keywords": None,
+                                "type": None,
                             }
 
-                    # logger.debug(
-                    #     f"{inspect.currentframe().f_code.co_name}: No edge found between {source_node_id} and {target_node_id}"
-                    # )
-                    # Return None when no edge found
                     return None
                 finally:
-                    await result.consume()  # Ensure result is fully consumed
+                    await result.consume()
 
         except Exception as e:
             logger.error(
@@ -833,17 +861,21 @@ class Neo4JStorage(BaseGraphStorage):
         ) as session:
             query = f"""
             UNWIND $pairs AS pair
-            MATCH (start:`{workspace_label}` {{entity_id: pair.src}})-[r:DIRECTED]-(end:`{workspace_label}` {{entity_id: pair.tgt}})
-            RETURN pair.src AS src_id, pair.tgt AS tgt_id, collect(properties(r)) AS edges
+            MATCH (start)-[r]-(end)
+            WHERE ((start:Person AND start.name = pair.src) OR (start:Document AND start.id = pair.src) OR (start:Topic AND start.name = pair.src) OR (start:Major AND start.name = pair.src) OR (start:Degree AND start.name = pair.src) OR (start:`{workspace_label}` AND start.entity_id = pair.src))
+              AND ((end:Person AND end.name = pair.tgt) OR (end:Document AND end.id = pair.tgt) OR (end:Topic AND end.name = pair.tgt) OR (end:Major AND end.name = pair.tgt) OR (end:Degree AND end.name = pair.tgt) OR (end:`{workspace_label}` AND end.entity_id = pair.tgt))
+            RETURN pair.src AS src_id, pair.tgt AS tgt_id, collect({{props: properties(r), type: type(r)}}) AS edges_with_type
             """
             result = await session.run(query, pairs=pairs)
             edges_dict = {}
             async for record in result:
                 src = record["src_id"]
                 tgt = record["tgt_id"]
-                edges = record["edges"]
-                if edges and len(edges) > 0:
-                    edge_props = edges[0]  # choose the first if multiple exist
+                edges_list = record["edges_with_type"]
+                if edges_list and len(edges_list) > 0:
+                    first_edge = edges_list[0]
+                    edge_props = first_edge["props"]
+                    edge_props["type"] = first_edge["type"]
                     # Ensure required keys exist with defaults
                     for key, default in {
                         "weight": 1.0,
@@ -867,17 +899,17 @@ class Neo4JStorage(BaseGraphStorage):
 
     @READ_RETRY
     async def get_node_edges(self, source_node_id: str) -> list[tuple[str, str]] | None:
-        """Retrieves all edges (relationships) for a particular node identified by its label.
+        """Retrieves all edges (relationships) for a particular node.
+        Returns edges with relationship types.
 
         Args:
-            source_node_id: Label of the node to get edges for
+            source_node_id: Identifier of the node to get edges for (entity_id, id, or name)
 
         Returns:
-            list[tuple[str, str]]: List of (source_label, target_label) tuples representing edges
+            list[tuple[str, str]]: List of (source_id, target_id) tuples representing edges
             None: If no edges found
 
         Raises:
-            ValueError: If source_node_id is invalid
             Exception: If there is an error executing the query
         """
         try:
@@ -886,46 +918,48 @@ class Neo4JStorage(BaseGraphStorage):
             ) as session:
                 results = None
                 try:
-                    workspace_label = self._get_workspace_label()
-                    query = f"""MATCH (n:`{workspace_label}` {{entity_id: $entity_id}})
-                            OPTIONAL MATCH (n)-[r]-(connected:`{workspace_label}`)
-                            WHERE connected.entity_id IS NOT NULL
-                            RETURN n, r, connected"""
-                    results = await session.run(query, entity_id=source_node_id)
+                    query = """
+                    MATCH (n)-[r]-(connected)
+                    WHERE (n:Person AND n.name = $source_node_id)
+                       OR (n:Document AND n.id = $source_node_id)
+                       OR (n:Topic AND n.name = $source_node_id)
+                       OR (n:Major AND n.name = $source_node_id)
+                       OR (n:Degree AND n.name = $source_node_id)
+                       OR n.entity_id = $source_node_id
+                    RETURN n, r, connected
+                    """
+                    results = await session.run(query, source_node_id=source_node_id)
 
                     edges = []
                     async for record in results:
                         source_node = record["n"]
                         connected_node = record["connected"]
 
-                        # Skip if either node is None
                         if not source_node or not connected_node:
                             continue
 
-                        source_label = (
+                        source_id = (
                             source_node.get("entity_id")
-                            if source_node.get("entity_id")
-                            else None
+                            or source_node.get("id")
+                            or source_node.get("name")
                         )
-                        target_label = (
+                        target_id = (
                             connected_node.get("entity_id")
-                            if connected_node.get("entity_id")
-                            else None
+                            or connected_node.get("id")
+                            or connected_node.get("name")
                         )
 
-                        if source_label and target_label:
-                            edges.append((source_label, target_label))
+                        if source_id and target_id:
+                            edges.append((source_id, target_id))
 
-                    await results.consume()  # Ensure results are consumed
-                    return edges
+                    await results.consume()
+                    return edges if edges else None
                 except Exception as e:
                     logger.error(
                         f"[{self.workspace}] Error getting edges for node {source_node_id}: {str(e)}"
                     )
                     if results is not None:
-                        await (
-                            results.consume()
-                        )  # Ensure results are consumed even on error
+                        await results.consume()
                     raise
         except Exception as e:
             logger.error(
@@ -958,11 +992,16 @@ class Neo4JStorage(BaseGraphStorage):
             workspace_label = self._get_workspace_label()
             query = f"""
                 UNWIND $node_ids AS id
-                MATCH (n:`{workspace_label}` {{entity_id: id}})
-                OPTIONAL MATCH (n)-[r]-(connected:`{workspace_label}`)
-                RETURN id AS queried_id, n.entity_id AS node_entity_id,
-                       connected.entity_id AS connected_entity_id,
-                       startNode(r).entity_id AS start_entity_id
+                MATCH (n)
+                WHERE (n:Person AND n.name = id) OR (n:Document AND n.id = id) OR (n:Topic AND n.name = id) OR (n:Major AND n.name = id) OR (n:Degree AND n.name = id) OR (n:`{workspace_label}` AND n.entity_id = id)
+                OPTIONAL MATCH (n)-[r]-(connected)
+                WHERE connected:Person OR connected:Document OR connected:Topic OR connected:Major OR connected:Degree OR connected:`{workspace_label}`
+                WITH id, n, r, connected,
+                     CASE WHEN connected:Person THEN connected.name WHEN connected:Document THEN connected.id WHEN connected:Topic THEN connected.name WHEN connected:Major THEN connected.name WHEN connected:Degree THEN connected.name ELSE connected.entity_id END AS connected_entity_id
+                RETURN id AS queried_id, 
+                       id AS node_entity_id,
+                       connected_entity_id,
+                       CASE WHEN startNode(r) = n THEN id ELSE connected_entity_id END AS start_entity_id
             """
             result = await session.run(query, node_ids=node_ids)
 
@@ -1484,22 +1523,24 @@ class Neo4JStorage(BaseGraphStorage):
 
     async def get_all_labels(self) -> list[str]:
         """
-        Get all existing entity_ids(entity names) in the database
+        Get all existing entity identifiers in the database.
+        Returns all entity_id, id, and name values across all TLU node types.
+
         Returns:
-            ["Person", "Company", ...]  # Alphabetically sorted label list
+            list[str]: Alphabetically sorted list of all entity identifiers
         """
-        workspace_label = self._get_workspace_label()
         async with self._driver.session(
             database=self._DATABASE, default_access_mode="READ"
         ) as session:
-            # Method 1: Direct metadata query (Available for Neo4j 4.3+)
-            # query = "CALL db.labels() YIELD label RETURN label"
-
-            # Method 2: Query compatible with older versions
-            query = f"""
-            MATCH (n:`{workspace_label}`)
-            WHERE n.entity_id IS NOT NULL
-            RETURN DISTINCT n.entity_id AS label
+            query = """
+            MATCH (n:Person|Document|Topic|Major|Degree)
+            WITH CASE 
+                WHEN n.entity_id IS NOT NULL THEN n.entity_id
+                WHEN n.id IS NOT NULL THEN n.id
+                WHEN n.name IS NOT NULL THEN n.name
+            END AS label
+            WHERE label IS NOT NULL
+            RETURN DISTINCT label
             ORDER BY label
             """
             result = await session.run(query)
@@ -1508,9 +1549,7 @@ class Neo4JStorage(BaseGraphStorage):
                 async for record in result:
                     labels.append(record["label"])
             finally:
-                await (
-                    result.consume()
-                )  # Ensure results are consumed even if processing fails
+                await result.consume()
             return labels
 
     @retry(
@@ -1631,7 +1670,8 @@ class Neo4JStorage(BaseGraphStorage):
             database=self._DATABASE, default_access_mode="READ"
         ) as session:
             query = f"""
-            MATCH (n:`{workspace_label}`)
+            MATCH (n)
+            WHERE (n:Person OR n:Document OR n:Topic OR n:Major OR n:Degree OR n:`{workspace_label}`)
             RETURN n
             """
             result = await session.run(query)
@@ -1640,7 +1680,11 @@ class Neo4JStorage(BaseGraphStorage):
                 node = record["n"]
                 node_dict = dict(node)
                 # Add node id (entity_id) to the dictionary for easier access
-                node_dict["id"] = node_dict.get("entity_id")
+                node_dict["id"] = (
+                    node_dict.get("entity_id")
+                    or node_dict.get("id")
+                    or node_dict.get("name")
+                )
                 nodes.append(node_dict)
             await result.consume()
             return nodes
@@ -1656,8 +1700,13 @@ class Neo4JStorage(BaseGraphStorage):
             database=self._DATABASE, default_access_mode="READ"
         ) as session:
             query = f"""
-            MATCH (a:`{workspace_label}`)-[r]-(b:`{workspace_label}`)
-            RETURN DISTINCT a.entity_id AS source, b.entity_id AS target, properties(r) AS properties
+            MATCH (a)-[r]-(b)
+            WHERE (a:Person OR a:Document OR a:Topic OR a:Major OR a:Degree OR a:`{workspace_label}`)
+              AND (b:Person OR b:Document OR b:Topic OR b:Major OR b:Degree OR b:`{workspace_label}`)
+            RETURN DISTINCT 
+                COALESCE(a.entity_id, a.id, a.name) AS source, 
+                COALESCE(b.entity_id, b.id, b.name) AS target, 
+                properties(r) AS properties
             """
             result = await session.run(query)
             edges = []

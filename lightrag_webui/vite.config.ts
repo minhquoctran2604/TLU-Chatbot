@@ -1,8 +1,15 @@
 import { defineConfig } from 'vite'
 import path from 'path'
-import { webuiPrefix } from '@/lib/constants'
+import { fileURLToPath } from 'url'
 import react from '@vitejs/plugin-react-swc'
 import tailwindcss from '@tailwindcss/vite'
+
+// ESM __dirname equivalent
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+
+// Hardcode webuiPrefix to avoid path alias issues
+const webuiPrefix = '/webui/'
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -34,19 +41,6 @@ export default defineConfig({
     }
   },
   server: {
-    proxy: import.meta.env.VITE_API_PROXY === 'true' && import.meta.env.VITE_API_ENDPOINTS ?
-      Object.fromEntries(
-        import.meta.env.VITE_API_ENDPOINTS.split(',').map(endpoint => [
-          endpoint,
-          {
-            target: import.meta.env.VITE_BACKEND_URL || 'http://localhost:9621',
-            changeOrigin: true,
-            rewrite: endpoint === '/api' ?
-              (path) => path.replace(/^\/api/, '') :
-              endpoint === '/docs' || endpoint === '/redoc' || endpoint === '/openapi.json' || endpoint === '/static' ?
-                (path) => path : undefined
-          }
-        ])
-      ) : {}
+    proxy: {}
   }
 })

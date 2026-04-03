@@ -137,57 +137,13 @@ export default function QuerySettings() {
                   <SelectContent>
                     <SelectGroup>
                       <SelectItem value="naive">{t('retrievePanel.querySettings.queryModeOptions.naive')}</SelectItem>
-                      <SelectItem value="local">{t('retrievePanel.querySettings.queryModeOptions.local')}</SelectItem>
-                      <SelectItem value="global">{t('retrievePanel.querySettings.queryModeOptions.global')}</SelectItem>
-                      <SelectItem value="hybrid">{t('retrievePanel.querySettings.queryModeOptions.hybrid')}</SelectItem>
                       <SelectItem value="mix">{t('retrievePanel.querySettings.queryModeOptions.mix')}</SelectItem>
-                      <SelectItem value="bypass">{t('retrievePanel.querySettings.queryModeOptions.bypass')}</SelectItem>
                     </SelectGroup>
                   </SelectContent>
                 </Select>
                 <ResetButton
                   onClick={() => handleReset('mode')}
                   title="Reset to default (Mix)"
-                />
-              </div>
-            </>
-
-            {/* Top K */}
-            <>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <label htmlFor="top_k" className="ml-1 cursor-help">
-                      {t('retrievePanel.querySettings.topK')}
-                    </label>
-                  </TooltipTrigger>
-                  <TooltipContent side="left">
-                    <p>{t('retrievePanel.querySettings.topKTooltip')}</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <div className="flex items-center gap-1">
-                <Input
-                  id="top_k"
-                  type="number"
-                  value={querySettings.top_k ?? ''}
-                  onChange={(e) => {
-                    const value = e.target.value
-                    handleChange('top_k', value === '' ? '' : parseInt(value) || 0)
-                  }}
-                  onBlur={(e) => {
-                    const value = e.target.value
-                    if (value === '' || isNaN(parseInt(value))) {
-                      handleChange('top_k', 40)
-                    }
-                  }}
-                  min={1}
-                  placeholder={t('retrievePanel.querySettings.topKPlaceholder')}
-                  className="h-9 flex-1 pr-2 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [-moz-appearance:textfield]"
-                />
-                <ResetButton
-                  onClick={() => handleReset('top_k')}
-                  title="Reset to default"
                 />
               </div>
             </>
@@ -227,86 +183,6 @@ export default function QuerySettings() {
                 />
                 <ResetButton
                   onClick={() => handleReset('chunk_top_k')}
-                  title="Reset to default"
-                />
-              </div>
-            </>
-
-            {/* Max Entity Tokens */}
-            <>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <label htmlFor="max_entity_tokens" className="ml-1 cursor-help">
-                      {t('retrievePanel.querySettings.maxEntityTokens')}
-                    </label>
-                  </TooltipTrigger>
-                  <TooltipContent side="left">
-                    <p>{t('retrievePanel.querySettings.maxEntityTokensTooltip')}</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <div className="flex items-center gap-1">
-                <Input
-                  id="max_entity_tokens"
-                  type="number"
-                  value={querySettings.max_entity_tokens ?? ''}
-                  onChange={(e) => {
-                    const value = e.target.value
-                    handleChange('max_entity_tokens', value === '' ? '' : parseInt(value) || 0)
-                  }}
-                  onBlur={(e) => {
-                    const value = e.target.value
-                    if (value === '' || isNaN(parseInt(value))) {
-                      handleChange('max_entity_tokens', 6000)
-                    }
-                  }}
-                  min={1}
-                  placeholder={t('retrievePanel.querySettings.maxEntityTokensPlaceholder')}
-                  className="h-9 flex-1 pr-2 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [-moz-appearance:textfield]"
-                />
-                <ResetButton
-                  onClick={() => handleReset('max_entity_tokens')}
-                  title="Reset to default"
-                />
-              </div>
-            </>
-
-            {/* Max Relation Tokens */}
-            <>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <label htmlFor="max_relation_tokens" className="ml-1 cursor-help">
-                      {t('retrievePanel.querySettings.maxRelationTokens')}
-                    </label>
-                  </TooltipTrigger>
-                  <TooltipContent side="left">
-                    <p>{t('retrievePanel.querySettings.maxRelationTokensTooltip')}</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <div className="flex items-center gap-1">
-                <Input
-                  id="max_relation_tokens"
-                  type="number"
-                  value={querySettings.max_relation_tokens ?? ''}
-                  onChange={(e) => {
-                    const value = e.target.value
-                    handleChange('max_relation_tokens', value === '' ? '' : parseInt(value) || 0)
-                  }}
-                  onBlur={(e) => {
-                    const value = e.target.value
-                    if (value === '' || isNaN(parseInt(value))) {
-                      handleChange('max_relation_tokens', 8000)
-                    }
-                  }}
-                  min={1}
-                  placeholder={t('retrievePanel.querySettings.maxRelationTokensPlaceholder')}
-                  className="h-9 flex-1 pr-2 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [-moz-appearance:textfield]"
-                />
-                <ResetButton
-                  onClick={() => handleReset('max_relation_tokens')}
                   title="Reset to default"
                 />
               </div>

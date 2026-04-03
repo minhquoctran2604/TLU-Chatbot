@@ -107,11 +107,7 @@ def create_graph_routes(rag, api_key: Optional[str] = None):
             )
 
     @router.get("/graph/label/popular", dependencies=[Depends(combined_auth)])
-    async def get_popular_labels(
-        limit: int = Query(
-            300, description="Maximum number of popular labels to return", ge=1, le=1000
-        ),
-    ):
+    async def get_popular_labels( limit: int = Query( 300, description="Maximum number of popular labels to return", ge=1, le=1000 ), ):
         """
         Get popular labels by node degree (most connected entities)
 

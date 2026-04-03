@@ -3490,117 +3490,60 @@ async def _perform_kg_search(
                 logger.warning(f"Failed to pre-compute query embedding: {e}")
                 query_embedding = None
 
-    # Handle local and global modes
-    if query_param.mode == "local" and len(ll_keywords) > 0:
-        local_entities, local_relations = await _get_node_data(
-            ll_keywords,
-            knowledge_graph_inst,
-            entities_vdb,
-            query_param,
-        )
-
-    elif query_param.mode == "global" and len(hl_keywords) > 0:
-        global_relations, global_entities = await _get_edge_data(
-            hl_keywords,
-            knowledge_graph_inst,
-            relationships_vdb,
-            query_param,
-        )
-
-    else:  # hybrid or mix mode
-        if len(ll_keywords) > 0:
-            local_entities, local_relations = await _get_node_data(
-                ll_keywords,
-                knowledge_graph_inst,
-                entities_vdb,
-                query_param,
+    # --- Text2Cypher: replace entity/relation vector search with Neo4j Cypher ---
+    cypher_facts_text = ""
+    if query_param.mode in ("local", "global", "hybrid", "mix"):
+        try:
+            from lightrag.text2cypher import (
+                generate_cypher,
+                Neo4jExecutor,
+                format_cypher_results,
             )
-        if len(hl_keywords) > 0:
-            global_relations, global_entities = await _get_edge_data(
-                hl_keywords,
-                knowledge_graph_inst,
-                relationships_vdb,
-                query_param,
-            )
+            import asyncio
 
-        # Get vector chunks for mix mode
-        if query_param.mode == "mix" and chunks_vdb:
-            vector_chunks = await _get_vector_context(
-                query,
-                chunks_vdb,
-                query_param,
-                query_embedding,
-            )
-            # Track vector chunks with source metadata
-            for i, chunk in enumerate(vector_chunks):
-                chunk_id = chunk.get("chunk_id") or chunk.get("id")
-                if chunk_id:
-                    chunk_tracking[chunk_id] = {
-                        "source": "C",
-                        "frequency": 1,  # Vector chunks always have frequency 1
-                        "order": i + 1,  # 1-based order in vector search results
-                    }
+            # Get LLM function from global config
+            llm_func = knowledge_graph_inst.global_config.get("llm_model_func")
+            if llm_func:
+                cypher = await generate_cypher(query, llm_func)
+                if cypher:
+                    executor = Neo4jExecutor()
+                    records = executor.execute(cypher)
+                    executor.close()
+                    if records:
+                        cypher_facts_text = format_cypher_results(records)
+                        logger.info(f"Text2Cypher returned {len(records)} records")
+                    else:
+                        logger.info("Text2Cypher: no records returned")
                 else:
-                    logger.warning(f"Vector chunk missing chunk_id: {chunk}")
+                    logger.info("Text2Cypher: could not generate Cypher")
+            else:
+                logger.info("Text2Cypher: no LLM function available")
+        except Exception as e:
+            logger.warning(f"Text2Cypher failed, continuing without: {e}")
 
-    # Round-robin merge entities
+    # Get vector chunks for mix mode (unchanged)
+    if query_param.mode == "mix" and chunks_vdb:
+        vector_chunks = await _get_vector_context(
+            query,
+            chunks_vdb,
+            query_param,
+            query_embedding,
+        )
+        for i, chunk in enumerate(vector_chunks):
+            chunk_id = chunk.get("chunk_id") or chunk.get("id")
+            if chunk_id:
+                chunk_tracking[chunk_id] = {
+                    "source": "C",
+                    "frequency": 1,
+                    "order": i + 1,
+                }
+
+    # No entity/relation merge needed — Cypher replaces both
     final_entities = []
-    seen_entities = set()
-    max_len = max(len(local_entities), len(global_entities))
-    for i in range(max_len):
-        # First from local
-        if i < len(local_entities):
-            entity = local_entities[i]
-            entity_name = entity.get("entity_name")
-            if entity_name and entity_name not in seen_entities:
-                final_entities.append(entity)
-                seen_entities.add(entity_name)
-
-        # Then from global
-        if i < len(global_entities):
-            entity = global_entities[i]
-            entity_name = entity.get("entity_name")
-            if entity_name and entity_name not in seen_entities:
-                final_entities.append(entity)
-                seen_entities.add(entity_name)
-
-    # Round-robin merge relations
     final_relations = []
-    seen_relations = set()
-    max_len = max(len(local_relations), len(global_relations))
-    for i in range(max_len):
-        # First from local
-        if i < len(local_relations):
-            relation = local_relations[i]
-            # Build relation unique identifier
-            if "src_tgt" in relation:
-                rel_key = tuple(sorted(relation["src_tgt"]))
-            else:
-                rel_key = tuple(
-                    sorted([relation.get("src_id"), relation.get("tgt_id")])
-                )
-
-            if rel_key not in seen_relations:
-                final_relations.append(relation)
-                seen_relations.add(rel_key)
-
-        # Then from global
-        if i < len(global_relations):
-            relation = global_relations[i]
-            # Build relation unique identifier
-            if "src_tgt" in relation:
-                rel_key = tuple(sorted(relation["src_tgt"]))
-            else:
-                rel_key = tuple(
-                    sorted([relation.get("src_id"), relation.get("tgt_id")])
-                )
-
-            if rel_key not in seen_relations:
-                final_relations.append(relation)
-                seen_relations.add(rel_key)
 
     logger.info(
-        f"Raw search results: {len(final_entities)} entities, {len(final_relations)} relations, {len(vector_chunks)} vector chunks"
+        f"Raw search results: cypher_facts={'yes' if cypher_facts_text else 'no'}, {len(vector_chunks)} vector chunks"
     )
 
     return {
@@ -3609,6 +3552,7 @@ async def _perform_kg_search(
         "vector_chunks": vector_chunks,
         "chunk_tracking": chunk_tracking,
         "query_embedding": query_embedding,
+        "cypher_facts": cypher_facts_text,
     }
 
 
@@ -3895,6 +3839,7 @@ async def _build_context_str(
     chunk_tracking: dict = None,
     entity_id_to_original: dict = None,
     relation_id_to_original: dict = None,
+    cypher_facts: str = "",
 ) -> tuple[str, dict[str, Any]]:
     """
     Build the final LLM context string with token processing.
@@ -3927,7 +3872,11 @@ async def _build_context_str(
         "system_prompt_template", PROMPTS["rag_response"]
     )
 
-    kg_context_template = PROMPTS["kg_query_context"]
+    # Use naive template when entities/relations are empty (Text2Cypher replaces KG VDB)
+    if not entities_context and not relations_context:
+        kg_context_template = PROMPTS["naive_query_context"]
+    else:
+        kg_context_template = PROMPTS["kg_query_context"]
     user_prompt = query_param.user_prompt if query_param.user_prompt else ""
     response_type = (
         query_param.response_type
@@ -3943,12 +3892,18 @@ async def _build_context_str(
     )
 
     # Calculate preliminary kg context tokens
-    pre_kg_context = kg_context_template.format(
-        entities_str=entities_str,
-        relations_str=relations_str,
-        text_chunks_str="",
-        reference_list_str="",
-    )
+    if not entities_context and not relations_context:
+        pre_kg_context = kg_context_template.format(
+            text_chunks_str="",
+            reference_list_str="",
+        )
+    else:
+        pre_kg_context = kg_context_template.format(
+            entities_str=entities_str,
+            relations_str=relations_str,
+            text_chunks_str="",
+            reference_list_str="",
+        )
     kg_context_tokens = len(tokenizer.encode(pre_kg_context))
 
     # Calculate preliminary system prompt tokens
@@ -4041,12 +3996,28 @@ async def _build_context_str(
         if chunk_tracking_log:
             logger.info(f"Final chunks S+F/O: {' '.join(chunk_tracking_log)}")
 
-    result = kg_context_template.format(
-        entities_str=entities_str,
-        relations_str=relations_str,
-        text_chunks_str=text_units_str,
-        reference_list_str=reference_list_str,
-    )
+    if not entities_context and not relations_context:
+        result = kg_context_template.format(
+            text_chunks_str=text_units_str,
+            reference_list_str=reference_list_str,
+        )
+    else:
+        result = kg_context_template.format(
+            entities_str=entities_str,
+            relations_str=relations_str,
+            text_chunks_str=text_units_str,
+            reference_list_str=reference_list_str,
+        )
+
+    # Prepend Cypher hard facts if available (Text2Cypher)
+    if cypher_facts:
+        cross_check_instruction = (
+            "\n\nLƯU Ý: Dữ liệu từ CSDL đồ thị ở trên là kết quả truy vấn trực tiếp. "
+            "Nếu Cypher query thiếu filter cốt lõi của câu hỏi (year, degree, major, topic, document type) "
+            "hoặc kết quả chỉ là aggregate tổng quát không phản ánh ràng buộc trong câu hỏi, "
+            "hãy đánh dấu là chưa xác minh và ưu tiên ngữ cảnh từ tài liệu."
+        )
+        result = cypher_facts + cross_check_instruction + "\n\n" + result
 
     # Always return both context and complete data structure (unified approach)
     logger.debug(
@@ -4150,6 +4121,7 @@ async def _build_query_context(
         chunk_tracking=search_result["chunk_tracking"],
         entity_id_to_original=truncation_result["entity_id_to_original"],
         relation_id_to_original=truncation_result["relation_id_to_original"],
+        cypher_facts=search_result.get("cypher_facts", ""),
     )
 
     # Convert keywords strings to lists and add complete metadata to raw_data

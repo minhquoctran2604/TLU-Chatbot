@@ -1,4 +1,4 @@
-import pytest
+import pytest  # pyright: ignore[reportMissingImports]
 
 from lightrag.exceptions import ChunkTokenLimitExceededError
 from lightrag.operate import chunking_by_token_size

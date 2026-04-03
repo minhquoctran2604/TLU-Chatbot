@@ -1,8 +1,5 @@
-"""
-This module contains all document-related routes for the LightRAG API.
-"""
-
 import asyncio
+import hashlib
 from functools import lru_cache
 from lightrag.utils import logger, get_pinyin_sort_key
 import aiofiles
@@ -32,16 +29,54 @@ from lightrag.api.utils_api import get_combined_auth_dependency
 from ..config import global_args
 
 
+# Singleton DocumentConverter - initialized once at module load time
+# Avoids OOM when processing multiple files concurrently
+import threading
+
+_docling_converter = None
+_docling_converter_lock = threading.Lock()
+
+# Cache for DoclingDocument objects, keyed by content hash
+# Used by hybrid_chunking_func to retrieve structured document for HybridChunker
+_docling_document_cache: dict[str, Any] = {}
+
+
+def get_cached_docling_document(content: str):
+    """Retrieve cached DoclingDocument by content hash. Returns None if not found."""
+    content_hash = hashlib.md5(content.encode()).hexdigest()
+    return _docling_document_cache.pop(content_hash, None)
+
+
+def _get_docling_converter():
+    """Get or create singleton DocumentConverter instance (thread safe)."""
+    global _docling_converter
+    if _docling_converter is None:
+        with _docling_converter_lock:
+            if _docling_converter is None:
+                from docling.document_converter import (
+                    DocumentConverter,
+                    PdfFormatOption,
+                )
+                from docling.datamodel.base_models import InputFormat
+                from docling.datamodel.pipeline_options import PdfPipelineOptions
+
+                pipeline_options = PdfPipelineOptions()
+                pipeline_options.generate_picture_images = True
+                pipeline_options.generate_page_images = True
+                pipeline_options.do_ocr = False
+
+                _docling_converter = DocumentConverter(
+                    format_options={
+                        InputFormat.PDF: PdfFormatOption(
+                            pipeline_options=pipeline_options
+                        )
+                    }
+                )
+    return _docling_converter
+
+
 @lru_cache(maxsize=1)
 def _is_docling_available() -> bool:
-    """Check if docling is available (cached check).
-
-    This function uses lru_cache to avoid repeated import attempts.
-    The result is cached after the first call.
-
-    Returns:
-        bool: True if docling is available, False otherwise
-    """
     try:
         import docling  # noqa: F401  # type: ignore[import-not-found]
 
@@ -932,7 +967,7 @@ def get_unique_filename_in_enqueued(target_dir: Path, original_name: str) -> str
 
 
 def _convert_with_docling(file_path: Path) -> str:
-    """Convert document using docling (synchronous).
+    """Convert document using docling (synchronous) - backward compatible.
 
     Args:
         file_path: Path to the document file
@@ -940,11 +975,104 @@ def _convert_with_docling(file_path: Path) -> str:
     Returns:
         str: Extracted markdown content
     """
-    from docling.document_converter import DocumentConverter  # type: ignore
+    markdown, _ = _convert_with_docling_with_images(file_path, output_dir=None)
+    return markdown
 
-    converter = DocumentConverter()
+
+def _convert_with_docling_with_images(
+    file_path: Path, output_dir: str = None
+) -> tuple[str, dict]:
+    """Convert document using docling with image extraction (synchronous).
+
+    Follows the pattern from docling_qwen_pipeline.ipynb:
+    1. Generate page images and picture images
+    2. Iterate through doc items to find FORMULA labels and crop from page images
+    3. Export markdown with ImageRefMode.PLACEHOLDER
+    4. Replace placeholders with [FORMULA_N], [IMAGE_N] pattern
+
+    Args:
+        file_path: Path to the document file
+        output_dir: Directory to save extracted images. If None, images won't be saved.
+
+    Returns:
+        tuple[str, dict]: (markdown_content, assets_dict)
+            - markdown_content: Extracted markdown with [FORMULA_N], [IMAGE_N] placeholders
+            - assets_dict: {"FORMULA_0": pil_image, "IMAGE_0": pil_image, ...}
+    """
+    from docling_core.types.doc.labels import DocItemLabel
+    from docling_core.types.doc.base import ImageRefMode
+    import os
+    import asyncio
+
+    # Use singleton converter to avoid OOM with multiple files
+    converter = _get_docling_converter()
     result = converter.convert(file_path)
-    return result.document.export_to_markdown()
+    doc = result.document
+
+    extracted_assets = {}
+
+    # 1. Extract FORMULA images by cropping from page images
+    formula_idx = 0
+    for item, level in doc.iterate_items():
+        if item.label == DocItemLabel.FORMULA:
+            prov = item.prov[0]
+            page = doc.pages[prov.page_no]
+            page_img = page.image.pil_image
+            bbox = prov.bbox
+            H = page_img.height
+
+            # Handle coordinate origin
+            if "BOTTOMLEFT" in str(getattr(bbox, "coord_origin", "")):
+                left, right = bbox.l, bbox.r
+                upper, lower = H - bbox.t, H - bbox.b
+            else:
+                left, upper, right, lower = bbox.l, bbox.t, bbox.r, bbox.b
+
+            # Add padding around formula
+            PADDING = 5
+            formula_pil = page_img.crop(
+                (
+                    max(0, left - PADDING),
+                    max(0, upper - PADDING),
+                    min(page_img.width, right + PADDING),
+                    min(page_img.height, lower + PADDING),
+                )
+            )
+
+            placeholder = f"[FORMULA_{formula_idx}]"
+            extracted_assets[placeholder] = formula_pil
+            item.text = placeholder
+            formula_idx += 1
+
+    # 2. Export markdown with placeholder mode
+    IMG_INTERNAL_PH = "<!--DOC_IMAGE_PH-->"
+    markdown = doc.export_to_markdown(
+        image_mode=ImageRefMode.PLACEHOLDER, image_placeholder=IMG_INTERNAL_PH
+    )
+
+    # 3. Replace internal placeholders with [IMAGE_N] pattern
+    for idx, pic in enumerate(doc.pictures):
+        placeholder = f"[IMAGE_{idx}]"
+        if IMG_INTERNAL_PH in markdown:
+            markdown = markdown.replace(IMG_INTERNAL_PH, placeholder, 1)
+            if hasattr(pic, "image") and hasattr(pic.image, "pil_image"):
+                extracted_assets[placeholder] = pic.image.pil_image
+
+    # 4. Save images to output_dir if specified
+    assets_paths = {}
+    if output_dir and extracted_assets:
+        os.makedirs(output_dir, exist_ok=True)
+        for placeholder, pil_image in extracted_assets.items():
+            filename = placeholder.replace("[", "").replace("]", "") + ".png"
+            filepath = os.path.join(output_dir, filename)
+            pil_image.save(filepath, "PNG")
+            assets_paths[placeholder] = filepath
+
+    # 5. Cache DoclingDocument for HybridChunker (retrieved in chunking_func)
+    content_hash = hashlib.md5(markdown.encode()).hexdigest()
+    _docling_document_cache[content_hash] = doc
+
+    return markdown, assets_paths
 
 
 def _extract_pdf_pypdf(file_bytes: bytes, password: str = None) -> str:
@@ -1369,8 +1497,16 @@ async def pipeline_enqueue_file(
                             global_args.document_loading_engine == "DOCLING"
                             and _is_docling_available()
                         ):
-                            content = await asyncio.to_thread(
-                                _convert_with_docling, file_path
+                            # Create assets directory for this document
+                            doc_id = compute_mdhash_id(file_path.name, prefix="doc-")
+                            assets_dir = Path(rag.working_dir) / "assets" / doc_id
+                            assets_dir.mkdir(parents=True, exist_ok=True)
+
+                            # Convert with image extraction
+                            content, assets = await asyncio.to_thread(
+                                _convert_with_docling_with_images,
+                                file_path,
+                                str(assets_dir),
                             )
                         else:
                             if (
@@ -1410,8 +1546,16 @@ async def pipeline_enqueue_file(
                             global_args.document_loading_engine == "DOCLING"
                             and _is_docling_available()
                         ):
-                            content = await asyncio.to_thread(
-                                _convert_with_docling, file_path
+                            # Create assets directory for this document
+                            doc_id = compute_mdhash_id(file_path.name, prefix="doc-")
+                            assets_dir = Path(rag.working_dir) / "assets" / doc_id
+                            assets_dir.mkdir(parents=True, exist_ok=True)
+
+                            # Convert with image extraction
+                            content, assets = await asyncio.to_thread(
+                                _convert_with_docling_with_images,
+                                file_path,
+                                str(assets_dir),
                             )
                         else:
                             if (
@@ -1447,8 +1591,16 @@ async def pipeline_enqueue_file(
                             global_args.document_loading_engine == "DOCLING"
                             and _is_docling_available()
                         ):
-                            content = await asyncio.to_thread(
-                                _convert_with_docling, file_path
+                            # Create assets directory for this document
+                            doc_id = compute_mdhash_id(file_path.name, prefix="doc-")
+                            assets_dir = Path(rag.working_dir) / "assets" / doc_id
+                            assets_dir.mkdir(parents=True, exist_ok=True)
+
+                            # Convert with image extraction
+                            content, assets = await asyncio.to_thread(
+                                _convert_with_docling_with_images,
+                                file_path,
+                                str(assets_dir),
                             )
                         else:
                             if (
@@ -1484,8 +1636,16 @@ async def pipeline_enqueue_file(
                             global_args.document_loading_engine == "DOCLING"
                             and _is_docling_available()
                         ):
-                            content = await asyncio.to_thread(
-                                _convert_with_docling, file_path
+                            # Create assets directory for this document
+                            doc_id = compute_mdhash_id(file_path.name, prefix="doc-")
+                            assets_dir = Path(rag.working_dir) / "assets" / doc_id
+                            assets_dir.mkdir(parents=True, exist_ok=True)
+
+                            # Convert with image extraction
+                            content, assets = await asyncio.to_thread(
+                                _convert_with_docling_with_images,
+                                file_path,
+                                str(assets_dir),
                             )
                         else:
                             if (
