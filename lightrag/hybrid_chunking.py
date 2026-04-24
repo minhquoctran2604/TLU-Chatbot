@@ -15,16 +15,35 @@ def build_hybrid_chunking_func(max_tokens: int = 512):
 
     The returned function matches LightRAG's chunking_func signature:
         (tokenizer, content, split_by_character, split_by_character_only,
-         chunk_overlap_token_size, chunk_token_size) -> List[Dict]
+        chunk_overlap_token_size, chunk_token_size) -> List[Dict]
 
     Each dict has keys: tokens, content, chunk_order_index
     """
     from docling_core.transforms.chunker import HybridChunker
+    from docling_core.transforms.chunker.hierarchical_chunker import (
+        ChunkingDocSerializer,
+        ChunkingSerializerProvider,
+    )
+    from docling_core.transforms.serializer.markdown import MarkdownParams
+    from docling_core.types.doc.base import ImageRefMode
+
+    class ImageRefSerializerProvider(ChunkingSerializerProvider):
+        """Serializer that keeps image references in chunk text for UI rendering."""
+        def get_serializer(self, doc):
+            return ChunkingDocSerializer(
+                doc=doc,
+                params=MarkdownParams(
+                    image_mode=ImageRefMode.REFERENCED,
+                    escape_underscores=False,
+                    escape_html=False,
+                ),
+            )
 
     chunker = HybridChunker(
         max_tokens=max_tokens,
         merge_peers=True,
         repeat_table_header=True,
+        serializer_provider=ImageRefSerializerProvider(),
     )
 
     def hybrid_chunking_func(
