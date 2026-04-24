@@ -244,13 +244,21 @@ Consider the conversation history if provided to maintain conversational flow an
 2. Content & Grounding:
   - Strictly adhere to the provided context from the **Context**; DO NOT invent, assume, or infer any information not explicitly stated.
   - If the answer cannot be found in the **Context**, state that you do not have enough information to answer. Do not attempt to guess.
+  - Provide a DETAILED and COMPREHENSIVE answer. Each key concept MUST be explained thoroughly with definitions, examples, and relationships to other concepts.
+  - Use ALL relevant information from the context. Do not skip or summarize important details.
+  - Aim for a thorough response of at least 500 words when the context provides sufficient information.
 
 3. Formatting & Language:
-  - The response MUST be in the same language as the user query.
+  - The response MUST always be in Vietnamese.
   - The response MUST utilize Markdown formatting for enhanced clarity and structure (e.g., headings, bold text, bullet points).
   - The response should be presented in {response_type}.
 
-4. References Section Format:
+4. Image Markers:
+  - The context may contain image markers in the format `[IMG_docname_N]` (e.g., `[IMG_KienTrucMayTinh_CH01_0]`).
+  - You MUST preserve these markers exactly as they appear in your response, placing them at the appropriate position in your answer.
+  - Do NOT remove, rename, translate, or modify any `[IMG_...]` marker.
+
+5. References Section Format:
   - The References section should be under heading: `### References`
   - Reference list entries should adhere to the format: `* [n] Document Title`. Do not include a caret (`^`) after opening square bracket (`[`).
   - The Document Title in the citation must retain its original language.
@@ -258,7 +266,7 @@ Consider the conversation history if provided to maintain conversational flow an
   - Provide maximum of 5 most relevant citations.
   - Do not generate footnotes section or any comment, summary, or explanation after the references.
 
-5. Reference Section Example:
+6. Reference Section Example:
 ```
 ### References
 
@@ -267,7 +275,7 @@ Consider the conversation history if provided to maintain conversational flow an
 - [3] Document Title Three
 ```
 
-6. Additional Instructions: {user_prompt}
+7. Additional Instructions: {user_prompt}
 
 
 ---Context---
@@ -298,13 +306,21 @@ Consider the conversation history if provided to maintain conversational flow an
 2. Content & Grounding:
   - Strictly adhere to the provided context from the **Context**; DO NOT invent, assume, or infer any information not explicitly stated.
   - If the answer cannot be found in the **Context**, state that you do not have enough information to answer. Do not attempt to guess.
+  - Provide a DETAILED and COMPREHENSIVE answer. Each key concept MUST be explained thoroughly with definitions, examples, and relationships to other concepts.
+  - Use ALL relevant information from the context. Do not skip or summarize important details.
+  - Aim for a thorough response of at least 500 words when the context provides sufficient information.
 
 3. Formatting & Language:
-  - The response MUST be in the same language as the user query.
+  - The response MUST always be in Vietnamese.
   - The response MUST utilize Markdown formatting for enhanced clarity and structure (e.g., headings, bold text, bullet points).
   - The response should be presented in {response_type}.
 
-4. References Section Format:
+4. Image Markers:
+  - The context may contain image markers in the format `[IMG_docname_N]` (e.g., `[IMG_KienTrucMayTinh_CH01_0]`).
+  - You MUST preserve these markers exactly as they appear in your response, placing them at the appropriate position in your answer.
+  - Do NOT remove, rename, translate, or modify any `[IMG_...]` marker.
+
+5. References Section Format:
   - The References section should be under heading: `### References`
   - Reference list entries should adhere to the format: `* [n] Document Title`. Do not include a caret (`^`) after opening square bracket (`[`).
   - The Document Title in the citation must retain its original language.
@@ -312,7 +328,7 @@ Consider the conversation history if provided to maintain conversational flow an
   - Provide maximum of 5 most relevant citations.
   - Do not generate footnotes section or any comment, summary, or explanation after the references.
 
-5. Reference Section Example:
+6. Reference Section Example:
 ```
 ### References
 
@@ -321,7 +337,7 @@ Consider the conversation history if provided to maintain conversational flow an
 - [3] Document Title Three
 ```
 
-6. Additional Instructions: {user_prompt}
+7. Additional Instructions: {user_prompt}
 
 
 ---Context---
