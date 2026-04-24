@@ -75,6 +75,127 @@ from dotenv import load_dotenv
 load_dotenv(dotenv_path=Path(__file__).resolve().parent / ".env", override=False)
 
 
+# --- Image mapping for post-LLM image injection ---
+def _build_retrieval_fingerprint(raw_data: dict[str, Any]) -> str:
+    """Build a stable fingerprint from the final ordered chunk list used for response generation."""
+    chunks = raw_data.get("data", {}).get("chunks", [])
+    ordered_chunk_ids = [
+        chunk_id
+        for chunk in chunks
+        if (chunk_id := (chunk.get("chunk_id") or chunk.get("id")))
+    ]
+    return compute_args_hash(json.dumps(ordered_chunk_ids, ensure_ascii=False))
+
+
+def _load_image_mapping(working_dir: str) -> dict[str, dict[str, str]]:
+    """Load image_mapping.json from workspace.
+    Format: { chunk_id: { "[IMG_N]": "filename.png", ... } }
+    """
+    mapping_path = Path(working_dir) / "image_mapping.json"
+    if mapping_path.exists():
+        try:
+            with open(mapping_path, "r", encoding="utf-8") as f:
+                mapping = json.load(f)
+                logger.info(f"Loaded image mapping: {len(mapping)} chunks with images")
+                return mapping
+        except Exception as e:
+            logger.warning(f"Failed to load image_mapping.json: {e}")
+            return {}
+    return {}
+
+
+def _enrich_response_with_images(
+    response: str, raw_data: dict, working_dir: str
+) -> str:
+    """Post-LLM: inject images from source chunks into response.
+
+    Strategy:
+    1. Collect images from source chunks (per-chunk, preserving which chunk owns which image)
+    2. Try inline replacement: if response contains [IMG_N], replace with image markdown
+       - Only replace if the marker uniquely maps to one image across source chunks
+    3. Fallback: append unique images at end of response
+    """
+    import re as _re
+
+    mapping = _load_image_mapping(working_dir)
+    if not mapping:
+        return response
+
+    # Count markers in LLM response (before enrichment)
+    import re as _re
+    markers_in_response = _re.findall(r'\[IMG_[^\]]+\]', response)
+    logger.info(f"[IMG_TRACE] LLM response has {len(markers_in_response)} markers: {markers_in_response[:5]}")
+
+    # Collect images per source chunk
+    chunks = raw_data.get("data", {}).get("chunks", [])
+    per_chunk_images: list[dict[str, str]] = []  # [{marker: filename}, ...]
+    all_filenames: set[str] = set()
+    total_markers_in_chunks = 0
+
+    for chunk in chunks:
+        chunk_id = chunk.get("chunk_id", "")
+        if chunk_id in mapping:
+            chunk_imgs = mapping[chunk_id]
+            per_chunk_images.append(chunk_imgs)
+            all_filenames.update(chunk_imgs.values())
+            total_markers_in_chunks += len(chunk_imgs)
+
+    logger.info(f"[IMG_TRACE] Source chunks: {len(chunks)} total, {len(per_chunk_images)} with images, {total_markers_in_chunks} total markers, {len(all_filenames)} unique files")
+
+    if not all_filenames:
+        return response
+
+    # Build unique marker → filename map (skip markers that appear in multiple chunks)
+    marker_counts: dict[str, list[str]] = {}  # marker → [filenames]
+    for chunk_imgs in per_chunk_images:
+        for marker, filename in chunk_imgs.items():
+            if marker not in marker_counts:
+                marker_counts[marker] = []
+            marker_counts[marker].append(filename)
+
+    # Inline replacement for unique markers only
+    enriched = response
+    replaced_files: set[str] = set()
+    replaced_count = 0
+
+    for marker, filenames in marker_counts.items():
+        if marker in enriched and len(filenames) == 1:
+            # Replace first occurrence with image on its own line, remove duplicates
+            enriched = enriched.replace(marker, f"\n\n![](/images/{filenames[0]})\n\n", 1)
+            enriched = enriched.replace(marker, "")  # remove any remaining duplicates
+            replaced_files.add(filenames[0])
+            replaced_count += 1
+        elif marker in enriched:
+            # Ambiguous marker (same [IMG_N] from multiple chunks) — remove marker text
+            enriched = enriched.replace(marker, "")
+
+    # Clean up excessive newlines from inline image insertion
+    import re as _re_clean
+    enriched = _re_clean.sub(r'\n{3,}', '\n\n', enriched)
+
+    # Strip any remaining unresolved [IMG_xxx] markers (quarantined/hallucinated)
+    unresolved_before = len(_re_clean.findall(r'\[IMG_[^\]]+\]', enriched))
+    enriched = _re_clean.sub(r'\[IMG_[^\]]+\]', '', enriched)
+    if unresolved_before:
+        logger.info(f"Stripped {unresolved_before} unresolved markers")
+
+    # Remove References section if it only contains resolved images or empty refs
+    # Matches: "### References\n- [1] ...\n- [2] ..." or "References\n[1] ..."
+    enriched = _re_clean.sub(
+        r'\n#{0,3}\s*References?\s*\n(?:\s*[-*]?\s*\[\d+\].*\n?)+',
+        '\n',
+        enriched,
+        flags=_re_clean.IGNORECASE,
+    )
+
+    enriched = _re_clean.sub(r'\n{3,}', '\n\n', enriched).strip()
+
+    if replaced_count > 0:
+        logger.info(f"Image injection: {replaced_count} markers replaced inline")
+
+    return enriched
+
+
 def _truncate_entity_identifier(
     identifier: str, limit: int, chunk_key: str, identifier_role: str
 ) -> str:
@@ -3160,6 +3281,7 @@ async def kg_query(
     )
 
     # Handle cache
+    retrieval_fingerprint = _build_retrieval_fingerprint(context_result.raw_data)
     args_hash = compute_args_hash(
         query_param.mode,
         query,
@@ -3173,6 +3295,7 @@ async def kg_query(
         ll_keywords_str,
         query_param.user_prompt or "",
         query_param.enable_rerank,
+        retrieval_fingerprint,
     )
 
     cached_result = await handle_cache(
@@ -3234,9 +3357,15 @@ async def kg_query(
                 .strip()
             )
 
+        # Post-LLM: inject images from source chunks
+        working_dir = global_config.get("working_dir", "")
+        if working_dir:
+            response = _enrich_response_with_images(
+                response, context_result.raw_data, working_dir
+            )
         return QueryResult(content=response, raw_data=context_result.raw_data)
     else:
-        # Streaming response (AsyncIterator)
+        # Streaming response (AsyncIterator) — image injection handled client-side
         return QueryResult(
             response_iterator=response,
             raw_data=context_result.raw_data,
@@ -3942,6 +4071,7 @@ async def _build_context_str(
 
     # Rebuild chunks_context with truncated chunks
     # The actual tokens may be slightly less than available_chunk_tokens due to deduplication logic
+    # Chunk text already contains [IMG_N] markers from custom serializer — keep as-is for LLM
     chunks_context = []
     for i, chunk in enumerate(truncated_chunks):
         chunks_context.append(
@@ -3960,8 +4090,11 @@ async def _build_context_str(
         if ref["reference_id"]
     )
 
+    # Count IMG markers in context being sent to LLM
+    import re as _re_ctx
+    _ctx_markers = _re_ctx.findall(r'\[IMG_[^\]]+\]', text_units_str)
     logger.info(
-        f"Final context: {len(entities_context)} entities, {len(relations_context)} relations, {len(chunks_context)} chunks"
+        f"Final context: {len(entities_context)} entities, {len(relations_context)} relations, {len(chunks_context)} chunks, {len(_ctx_markers)} IMG markers"
     )
 
     # not necessary to use LLM to generate a response
@@ -4855,7 +4988,11 @@ async def naive_query(
         processed_chunks
     )
 
-    logger.info(f"Final context: {len(processed_chunks_with_ref_ids)} chunks")
+    # Count IMG markers in chunks being sent to LLM
+    import re as _re_naive
+    _all_chunk_text = " ".join(c.get("content", "") for c in processed_chunks_with_ref_ids)
+    _naive_markers = _re_naive.findall(r'\[IMG_[^\]]+\]', _all_chunk_text)
+    logger.info(f"Final context: {len(processed_chunks_with_ref_ids)} chunks, {len(_naive_markers)} IMG markers in context")
 
     # Build raw data structure for naive mode using processed chunks with reference IDs
     raw_data = convert_to_user_format(
@@ -4919,6 +5056,7 @@ async def naive_query(
         return QueryResult(content=prompt_content, raw_data=raw_data)
 
     # Handle cache
+    retrieval_fingerprint = _build_retrieval_fingerprint(raw_data)
     args_hash = compute_args_hash(
         query_param.mode,
         query,
@@ -4930,6 +5068,7 @@ async def naive_query(
         query_param.max_total_tokens,
         query_param.user_prompt or "",
         query_param.enable_rerank,
+        retrieval_fingerprint,
     )
     cached_result = await handle_cache(
         hashing_kv, args_hash, user_query, query_param.mode, cache_type="query"
@@ -4988,9 +5127,13 @@ async def naive_query(
                 .strip()
             )
 
+        # Post-LLM: inject images from source chunks
+        working_dir = global_config.get("working_dir", "")
+        if working_dir:
+            response = _enrich_response_with_images(response, raw_data, working_dir)
         return QueryResult(content=response, raw_data=raw_data)
     else:
-        # Streaming response (AsyncIterator)
+        # Streaming response (AsyncIterator) — image injection handled client-side
         return QueryResult(
             response_iterator=response, raw_data=raw_data, is_streaming=True
         )

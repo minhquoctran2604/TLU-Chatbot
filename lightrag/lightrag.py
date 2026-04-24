@@ -1192,20 +1192,27 @@ class LightRAG:
         full_text: str,
         text_chunks: list[str],
         doc_id: str | list[str] | None = None,
+        file_path: str | None = None,
     ) -> None:
         loop = always_get_an_event_loop()
         loop.run_until_complete(
-            self.ainsert_custom_chunks(full_text, text_chunks, doc_id)
+            self.ainsert_custom_chunks(full_text, text_chunks, doc_id, file_path)
         )
 
     # TODO: deprecated, use ainsert instead
-    async def ainsert_custom_chunks(self, full_text: str, text_chunks: list[str], doc_id: str | None = None ) -> None:
+    async def ainsert_custom_chunks(
+        self,
+        full_text: str,
+        text_chunks: list[str],
+        doc_id: str | None = None,
+        file_path: str | None = None,
+    ) -> None:
         update_storage = False
         try:
             # Clean input texts
             full_text = sanitize_text_for_encoding(full_text)
             text_chunks = [sanitize_text_for_encoding(chunk) for chunk in text_chunks]
-            file_path = ""
+            file_path = file_path or "unknown_source"
 
             # Process cleaned texts
             if doc_id is None:

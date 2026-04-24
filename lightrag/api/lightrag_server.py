@@ -485,7 +485,9 @@ def create_app(args):
     # Create working directory if it doesn't exist
     Path(args.working_dir).mkdir(parents=True, exist_ok=True)
 
-    def create_optimized_openai_llm_func( config_cache: LLMConfigCache, args, llm_timeout: int ):
+    def create_optimized_openai_llm_func(
+        config_cache: LLMConfigCache, args, llm_timeout: int
+    ):
         """Create optimized OpenAI LLM function with pre-processed configuration"""
 
         async def optimized_openai_alike_model_complete(
@@ -520,7 +522,9 @@ def create_app(args):
 
         return optimized_openai_alike_model_complete
 
-    def create_optimized_azure_openai_llm_func( config_cache: LLMConfigCache, args, llm_timeout: int ):
+    def create_optimized_azure_openai_llm_func(
+        config_cache: LLMConfigCache, args, llm_timeout: int
+    ):
         """Create optimized Azure OpenAI LLM function with pre-processed configuration"""
 
         async def optimized_azure_openai_model_complete(
@@ -612,7 +616,9 @@ def create_app(args):
                 return bedrock_model_complete  # Already defined locally
             elif binding == "azure_openai":
                 # Use optimized function with pre-processed configuration
-                return create_optimized_azure_openai_llm_func( config_cache, args, llm_timeout )
+                return create_optimized_azure_openai_llm_func(
+                    config_cache, args, llm_timeout
+                )
             elif binding == "gemini":
                 return create_optimized_gemini_llm_func(config_cache, args, llm_timeout)
             else:  # openai and compatible
@@ -849,9 +855,15 @@ def create_app(args):
 
                     # Lazy-load model once (cached after first call)
                     if not hasattr(optimized_embedding_function, "_hf_model"):
-                        hf_model_name = model or "sentence-transformers/all-MiniLM-L6-v2"
-                        logger.info(f"Loading HuggingFace embedding model: {hf_model_name}")
-                        optimized_embedding_function._hf_model = SentenceTransformer(hf_model_name)
+                        hf_model_name = (
+                            model or "sentence-transformers/all-MiniLM-L6-v2"
+                        )
+                        logger.info(
+                            f"Loading HuggingFace embedding model: {hf_model_name}"
+                        )
+                        optimized_embedding_function._hf_model = SentenceTransformer(
+                            hf_model_name
+                        )
 
                     embeddings = optimized_embedding_function._hf_model.encode(
                         texts, normalize_embeddings=True
@@ -1099,6 +1111,7 @@ def create_app(args):
 
         # Replace default chunking with Docling HybridChunker
         from lightrag.hybrid_chunking import build_hybrid_chunking_func
+
         rag.chunking_func = build_hybrid_chunking_func(max_tokens=512)
 
     except Exception as e:
@@ -1355,6 +1368,28 @@ def create_app(args):
             StaticFiles(directory=swagger_static_dir),
             name="swagger-ui-static",
         )
+
+    # Serve image mapping JSON (must be BEFORE static mount to avoid being shadowed)
+    @app.get("/api/image-mapping", include_in_schema=False)
+    async def get_image_mapping():
+        """Return image_mapping.json for frontend chunk-to-image lookup."""
+        import json as _json
+
+        mapping_path = Path(args.working_dir) / "image_mapping.json"
+        if mapping_path.exists():
+            with open(mapping_path, "r", encoding="utf-8") as f:
+                return _json.load(f)
+        return {}
+
+    # Mount workspace images for image mapping (chunk images extracted during ingest)
+    images_dir = Path(args.working_dir) / "images"
+    if images_dir.exists():
+        app.mount(
+            "/images",
+            StaticFiles(directory=str(images_dir)),
+            name="workspace-images",
+        )
+        logger.info(f"Workspace images mounted at /images from {images_dir}")
 
     # Conditionally mount WebUI only if assets exist
     if webui_assets_exist:

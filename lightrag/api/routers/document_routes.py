@@ -26,6 +26,7 @@ from lightrag.utils import (
     sanitize_text_for_encoding,
 )
 from lightrag.api.utils_api import get_combined_auth_dependency
+from lightrag.notebook_ingest import notebook_ingest_pdf
 from ..config import global_args
 
 
@@ -2382,7 +2383,7 @@ def create_document_routes(
             track_id = generate_track_id("upload")
 
             # Add to background tasks and get track_id
-            background_tasks.add_task(pipeline_index_file, rag, file_path, track_id)
+            background_tasks.add_task(notebook_ingest_pdf, rag, file_path)
 
             return InsertResponse(
                 status="success",
