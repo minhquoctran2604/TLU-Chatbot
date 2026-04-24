@@ -508,6 +508,20 @@ export const getDocumentsScanProgress = async (): Promise<LightragDocumentsScanP
   return response.data
 }
 
+// Image mapping cache for chunk-to-image lookup
+let _imageMappingCache: Record<string, string[]> | null = null
+
+export const getImageMapping = async (): Promise<Record<string, string[]>> => {
+  if (_imageMappingCache !== null) return _imageMappingCache
+  try {
+    const response = await axiosInstance.get('/api/image-mapping')
+    _imageMappingCache = response.data || {}
+  } catch {
+    _imageMappingCache = {}
+  }
+  return _imageMappingCache!
+}
+
 export const queryText = async (request: QueryRequest): Promise<QueryResponse> => {
   const response = await axiosInstance.post('/query', request)
   return response.data

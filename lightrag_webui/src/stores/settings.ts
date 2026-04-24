@@ -122,18 +122,18 @@ const useSettingsStoreBase = create<SettingsState>()(
       userPromptHistory: [],
 
       querySettings: {
-        mode: 'global',
-        top_k: 40,
-        chunk_top_k: 20,
+        mode: 'naive',
+        top_k: 10,
+        chunk_top_k: 5,
         max_entity_tokens: 6000,
         max_relation_tokens: 8000,
         max_total_tokens: 30000,
         only_need_context: false,
         only_need_prompt: false,
-        stream: true,
-        history_turns: 0,
+        stream: false,
+        history_turns: 5,
         user_prompt: '',
-        enable_rerank: true
+        enable_rerank: false
       },
 
       setTheme: (theme: Theme) => set({ theme }),
@@ -191,9 +191,9 @@ const useSettingsStoreBase = create<SettingsState>()(
       updateQuerySettings: (settings: Partial<QueryRequest>) => {
         // Filter out history_turns to prevent changes, always keep it as 0
         const filteredSettings = { ...settings }
-        delete filteredSettings.history_turns
+        // delete filteredSettings.history_turns  // Disabled to enable multi-turn
         set((state) => ({
-          querySettings: { ...state.querySettings, ...filteredSettings, history_turns: 0 }
+          querySettings: { ...state.querySettings, ...filteredSettings, history_turns: 5 }
         }))
       },
 
@@ -258,7 +258,7 @@ const useSettingsStoreBase = create<SettingsState>()(
         }
         if (version < 6) {
           state.querySettings = {
-            mode: 'global',
+            mode: 'naive',
             response_type: 'Multiple Paragraphs',
             top_k: 10,
             max_token_for_text_unit: 4000,
@@ -266,8 +266,8 @@ const useSettingsStoreBase = create<SettingsState>()(
             max_token_for_local_context: 4000,
             only_need_context: false,
             only_need_prompt: false,
-            stream: true,
-            history_turns: 0,
+            stream: false,
+            history_turns: 5,
             hl_keywords: [],
             ll_keywords: []
           }
@@ -310,7 +310,7 @@ const useSettingsStoreBase = create<SettingsState>()(
           // Add new querySettings
           state.querySettings = {
             ...state.querySettings,
-            mode: 'mix',
+            mode: 'naive',
             response_type: 'Multiple Paragraphs',
             top_k: 40,
             chunk_top_k: 10,
@@ -318,7 +318,7 @@ const useSettingsStoreBase = create<SettingsState>()(
             max_relation_tokens: 10000,
             max_total_tokens: 32000,
             enable_rerank: true,
-            history_turns: 0,
+            history_turns: 5,
           }
         }
         if (version < 16) {

@@ -1,5 +1,5 @@
-import { ReactNode, useEffect, useMemo, useRef, memo, useState } from 'react' // Import useMemo
-import { Message } from '@/api/lightrag'
+import { ReactNode, useEffect, useMemo, useRef, memo, useState } from 'react'
+import { Message, getImageMapping } from '@/api/lightrag'
 import useTheme from '@/hooks/useTheme'
 import { cn } from '@/lib/utils'
 
@@ -128,6 +128,19 @@ export const ChatMessage = ({
           {children}
         </CodeHighlight>
       );
+    },
+    img: ({ src, alt, ...props }: any) => {
+      // Render workspace images with proper styling
+      const imgSrc = src?.startsWith('/images/') ? src : src
+      return (
+        <img
+          src={imgSrc}
+          alt={alt || 'Figure'}
+          className="max-w-full h-auto rounded-lg my-3 border border-border shadow-sm"
+          loading="lazy"
+          {...props}
+        />
+      )
     },
     p: ({ children }: { children?: ReactNode }) => <div className="my-2">{children}</div>,
     h1: ({ children }: { children?: ReactNode }) => <h1 className="text-xl font-bold mt-4 mb-2">{children}</h1>,

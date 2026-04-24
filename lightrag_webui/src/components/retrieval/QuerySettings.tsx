@@ -39,7 +39,7 @@ export default function QuerySettings() {
 
   // Default values for reset functionality
   const defaultValues = useMemo(() => ({
-    mode: 'mix' as QueryMode,
+    mode: 'naive' as QueryMode,
     top_k: 40,
     chunk_top_k: 20,
     max_entity_tokens: 6000,
