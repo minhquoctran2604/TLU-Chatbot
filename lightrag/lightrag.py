@@ -1232,7 +1232,14 @@ class LightRAG:
 
             inserting_chunks: dict[str, Any] = {}
             for index, chunk_text in enumerate(text_chunks):
-                chunk_key = compute_mdhash_id(chunk_text, prefix="chunk-")
+                # Salt chunk_key with (doc_key, index) to prevent:
+                #  1. Cross-doc collision (same content in different docs)
+                #  2. Intra-doc duplicate (identical slides/sections in one doc)
+                # filter_keys() in postgres_impl scopes only by (workspace, id),
+                # so chunk_id must be globally unique by construction.
+                chunk_key = compute_mdhash_id(
+                    f"{doc_key}::{index}::{chunk_text}", prefix="chunk-"
+                )
                 tokens = len(self.tokenizer.encode(chunk_text))
                 inserting_chunks[chunk_key] = {
                     "content": chunk_text,
@@ -1251,11 +1258,19 @@ class LightRAG:
 
             tasks = [
                 self.chunks_vdb.upsert(inserting_chunks),
-                # self._process_extract_entities(inserting_chunks), # vi co graph san roi ko can phai extract nua
                 self.full_docs.upsert(new_docs),
                 self.text_chunks.upsert(inserting_chunks),
             ]
             await asyncio.gather(*tasks)
+
+            # Extract + merge entities/relations into 6 PG tables.
+            # persist=False: finally _insert_done() handles flush once.
+            await self.extract_and_merge_chunks(
+                chunks=inserting_chunks,
+                doc_id=doc_key,
+                file_path=file_path,
+                persist=False,
+            )
 
         finally:
             if update_storage:
@@ -2041,6 +2056,10 @@ class LightRAG:
                                 # Record processing end time
                                 processing_end_time = int(time.time())
 
+                                # Call _insert_done first to ensure physical persistence of NetworkX and DBs
+                                await self._insert_done()
+
+                                # Mark as PROCESSED only after physical write completes
                                 await self.doc_status.upsert(
                                     {
                                         doc_id: {
@@ -2062,9 +2081,6 @@ class LightRAG:
                                         }
                                     }
                                 )
-
-                                # Call _insert_done after processing each file
-                                await self._insert_done()
 
                                 async with pipeline_status_lock:
                                     log_message = f"Completed processing file {current_file_number}/{total_files}: {file_path}"
@@ -2221,6 +2237,72 @@ class LightRAG:
                 pipeline_status["latest_message"] = error_msg
                 pipeline_status["history_messages"].append(error_msg)
             raise e
+
+    async def extract_and_merge_chunks(
+        self,
+        chunks: dict[str, Any],
+        pipeline_status: dict = None,
+        pipeline_status_lock=None,
+        doc_id: str = None,
+        file_path: str = "unknown_source",
+        persist: bool = True,
+    ) -> None:
+        """Full chain: extract entities → merge → persist 6 PG tables + flush.
+
+        Auto-creates minimal pipeline_status + asyncio.Lock() if not provided.
+        Required because merge_nodes_and_edges uses lock unconditionally
+        (operate.py:2586, 2597, 2698).
+
+        Args:
+            chunks: dict[chunk_id -> chunk_data]
+            pipeline_status: optional shared status dict; auto-created if None
+            pipeline_status_lock: optional asyncio.Lock; auto-created if None
+            doc_id: REQUIRED to populate full_entities/full_relations
+                (operate.py:2816 guards on doc_id presence)
+            file_path: source file path for citation
+            persist: True → call _insert_done() to flush graph storage
+                (NetworkX graphml, Neo4j commit). Set False from upload path
+                to avoid double-flush (ainsert_custom_chunks has its own
+                finally _insert_done).
+        """
+        # Auto-create minimal status + lock (REQUIRED: merge does not guard None)
+        if pipeline_status is None:
+            pipeline_status = {
+                "latest_message": "",
+                "history_messages": [],
+                "cancellation_requested": False,
+            }
+        if pipeline_status_lock is None:
+            pipeline_status_lock = asyncio.Lock()
+
+        # Phase 1: extract entities/relations per chunk
+        chunk_results = await self._process_extract_entities(
+            chunks, pipeline_status, pipeline_status_lock
+        )
+        if not chunk_results:
+            return
+
+        # Phase 2: merge across chunks + persist to 6 tables
+        await merge_nodes_and_edges(
+            chunk_results=chunk_results,
+            knowledge_graph_inst=self.chunk_entity_relation_graph,
+            entity_vdb=self.entities_vdb,
+            relationships_vdb=self.relationships_vdb,
+            global_config=asdict(self),
+            full_entities_storage=self.full_entities,
+            full_relations_storage=self.full_relations,
+            entity_chunks_storage=self.entity_chunks,
+            relation_chunks_storage=self.relation_chunks,
+            doc_id=doc_id,
+            pipeline_status=pipeline_status,
+            pipeline_status_lock=pipeline_status_lock,
+            llm_response_cache=self.llm_response_cache,
+            file_path=file_path,
+        )
+
+        # Phase 3: optionally flush graph storage
+        if persist:
+            await self._insert_done(pipeline_status, pipeline_status_lock)
 
     async def _insert_done(
         self, pipeline_status=None, pipeline_status_lock=None
@@ -2646,7 +2728,7 @@ class LightRAG:
 
         query_result = None
 
-        if data_param.mode in ["local", "global", "hybrid", "mix"]:
+        if data_param.mode in ["local", "global", "hybrid", "mix", "stat"]:
             logger.debug(f"[aquery_data] Using kg_query for mode: {data_param.mode}")
             query_result = await kg_query(
                 query.strip(),
@@ -2659,6 +2741,8 @@ class LightRAG:
                 hashing_kv=self.llm_response_cache,
                 system_prompt=None,
                 chunks_vdb=self.chunks_vdb,
+                entity_chunks_storage=self.entity_chunks,
+                relation_chunks_storage=self.relation_chunks,
             )
         elif data_param.mode == "naive":
             logger.debug(f"[aquery_data] Using naive_query for mode: {data_param.mode}")
@@ -2744,7 +2828,7 @@ class LightRAG:
         try:
             query_result = None
 
-            if param.mode in ["local", "global", "hybrid", "mix"]:
+            if param.mode in ["local", "global", "hybrid", "mix", "stat"]:
                 query_result = await kg_query(
                     query.strip(),
                     self.chunk_entity_relation_graph,
@@ -2756,6 +2840,8 @@ class LightRAG:
                     hashing_kv=self.llm_response_cache,
                     system_prompt=system_prompt,
                     chunks_vdb=self.chunks_vdb,
+                    entity_chunks_storage=self.entity_chunks,
+                    relation_chunks_storage=self.relation_chunks,
                 )
             elif param.mode == "naive":
                 query_result = await naive_query(

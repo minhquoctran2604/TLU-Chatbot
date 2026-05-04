@@ -48,9 +48,48 @@ Notes:
 - All text fields are in Vietnamese
 """.strip()
 
+# Few-shot examples covering 7 distinct query patterns:
+# (1) author lookup, (2) advisor lookup, (3) count aggregate,
+# (4) simple list, (5) multi-filter, (6) ORDER BY + count, (7) multi-hop top-k.
+# Update if schema changes.
+CYPHER_EXAMPLES = """
+Examples (study these patterns carefully):
+
+Q: "Tài liệu của tác giả Nguyễn Văn A"
+A: MATCH (p:Person {name: "Nguyễn Văn A"})-[:WROTE]->(d:Document)
+   RETURN d.title, d.year LIMIT 20
+
+Q: "Đồ án thầy hướng dẫn Lê Văn C"
+A: MATCH (p:Person {name: "Lê Văn C"})-[:ADVISED]->(d:Document)
+   RETURN d.title, d.year LIMIT 20
+
+Q: "Có bao nhiêu tài liệu trong cơ sở dữ liệu?"
+A: MATCH (d:Document) RETURN count(d) AS total
+
+Q: "Liệt kê 5 ngành"
+A: MATCH (m:Major) RETURN m.name LIMIT 5
+
+Q: "Tài liệu năm 2023 ngành Công nghệ thông tin"
+A: MATCH (d:Document)-[:BELONGS_TO_MAJOR]->(m:Major)
+   WHERE toLower(m.name) CONTAINS "công nghệ thông tin" AND d.year = "2023"
+   RETURN d.title LIMIT 20
+
+Q: "Tác giả viết nhiều nhất"
+A: MATCH (p:Person)-[:WROTE]->(d:Document)
+   RETURN p.name, count(d) AS doc_count
+   ORDER BY doc_count DESC LIMIT 10
+
+Q: "Topic phổ biến nhất"
+A: MATCH (d:Document)-[:HAS_TOPIC]->(t:Topic)
+   RETURN t.name, count(d) AS doc_count
+   ORDER BY doc_count DESC LIMIT 10
+""".strip()
+
 CYPHER_SYSTEM_PROMPT = """You are a Cypher query generator for a Neo4j database.
 
 {schema}
+
+{examples}
 
 Rules:
 1. ONLY use node labels and relationship types from the schema above
@@ -126,7 +165,10 @@ class Neo4jExecutor:
 
 async def generate_cypher(query: str, llm_func, **kwargs) -> Optional[str]:
     """Use LLM to generate Cypher from natural language query."""
-    system_prompt = CYPHER_SYSTEM_PROMPT.format(schema=SCHEMA_DESCRIPTION)
+    system_prompt = CYPHER_SYSTEM_PROMPT.format(
+        schema=SCHEMA_DESCRIPTION,
+        examples=CYPHER_EXAMPLES,
+    )
     user_prompt = CYPHER_USER_PROMPT.format(question=query)
 
     try:

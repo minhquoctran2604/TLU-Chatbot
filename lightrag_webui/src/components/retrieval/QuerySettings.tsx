@@ -137,6 +137,8 @@ export default function QuerySettings() {
                   <SelectContent>
                     <SelectGroup>
                       <SelectItem value="naive">{t('retrievePanel.querySettings.queryModeOptions.naive')}</SelectItem>
+                      <SelectItem value="hybrid">{t('retrievePanel.querySettings.queryModeOptions.hybrid')}</SelectItem>
+                      <SelectItem value="stat">{t('retrievePanel.querySettings.queryModeOptions.stat')}</SelectItem>
                       <SelectItem value="mix">{t('retrievePanel.querySettings.queryModeOptions.mix')}</SelectItem>
                     </SelectGroup>
                   </SelectContent>
