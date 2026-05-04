@@ -95,7 +95,7 @@ export type LightragDocumentsScanProgress = {
  * - "mix": Integrates knowledge graph and vector retrieval.
  * - "bypass": Bypasses knowledge retrieval and directly uses the LLM.
  */
-export type QueryMode = 'naive' | 'local' | 'global' | 'hybrid' | 'mix' | 'bypass'
+export type QueryMode = 'naive' | 'local' | 'global' | 'hybrid' | 'mix' | 'bypass' | 'stat'
 
 export type Message = {
   role: 'user' | 'assistant' | 'system'
@@ -194,6 +194,8 @@ export type DocStatusResponse = {
   updated_at: string
   track_id?: string
   chunks_count?: number
+  entity_count?: number
+  relation_count?: number
   error_msg?: string
   metadata?: Record<string, any>
   file_path: string

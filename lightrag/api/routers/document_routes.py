@@ -40,6 +40,7 @@ _docling_converter_lock = threading.Lock()
 # Cache for DoclingDocument objects, keyed by content hash
 # Used by hybrid_chunking_func to retrieve structured document for HybridChunker
 _docling_document_cache: dict[str, Any] = {}
+_upload_ingest_tasks: set[asyncio.Task[Any]] = set()
 
 
 def get_cached_docling_document(content: str):
@@ -74,6 +75,24 @@ def _get_docling_converter():
                     }
                 )
     return _docling_converter
+
+
+def _schedule_upload_ingest(
+    rag: LightRAG, file_path: Path, track_id: str | None = None
+) -> None:
+    """Decouple PDF ingest from request lifecycle to keep the API responsive."""
+
+    task = asyncio.create_task(notebook_ingest_pdf(rag, file_path, track_id=track_id))
+    _upload_ingest_tasks.add(task)
+
+    def _cleanup_upload_task(done_task: asyncio.Task[Any]) -> None:
+        _upload_ingest_tasks.discard(done_task)
+        try:
+            done_task.result()
+        except Exception:
+            logger.exception("Background PDF ingest failed for %s", file_path)
+
+    task.add_done_callback(_cleanup_upload_task)
 
 
 @lru_cache(maxsize=1)
@@ -476,6 +495,12 @@ class DocStatusResponse(BaseModel):
     )
     chunks_count: Optional[int] = Field(
         default=None, description="Number of chunks the document was split into"
+    )
+    entity_count: Optional[int] = Field(
+        default=None, description="Number of entities extracted from this document"
+    )
+    relation_count: Optional[int] = Field(
+        default=None, description="Number of relations extracted from this document"
     )
     error_msg: Optional[str] = Field(
         default=None, description="Error message if processing failed"
@@ -2234,9 +2259,7 @@ def create_document_routes(
     @router.post(
         "/upload", response_model=InsertResponse, dependencies=[Depends(combined_auth)]
     )
-    async def upload_to_input_dir(
-        background_tasks: BackgroundTasks, file: UploadFile = File(...)
-    ):
+    async def upload_to_input_dir(file: UploadFile = File(...)):
         """
         Upload a file to the input directory and index it.
 
@@ -2277,7 +2300,6 @@ def create_document_routes(
         - This design prevents blocking the client during expensive operations
 
         Args:
-            background_tasks: FastAPI BackgroundTasks for async processing
             file (UploadFile): The file to be uploaded. It must have an allowed extension.
 
         Returns:
@@ -2382,8 +2404,8 @@ def create_document_routes(
 
             track_id = generate_track_id("upload")
 
-            # Add to background tasks and get track_id
-            background_tasks.add_task(notebook_ingest_pdf, rag, file_path)
+            # Schedule PDF ingest outside the request lifecycle so paginated polling stays responsive.
+            _schedule_upload_ingest(rag, file_path, track_id=track_id)
 
             return InsertResponse(
                 status="success",
@@ -3268,6 +3290,23 @@ def create_document_routes(
                 docs_task, status_counts_task
             )
 
+            # Batch fetch entity/relation counts per doc.
+            doc_ids = [d_id for d_id, _ in documents_with_ids]
+            entity_count_map: dict[str, int] = {}
+            relation_count_map: dict[str, int] = {}
+            if doc_ids:
+                try:
+                    ent_rows = await rag.full_entities.get_by_ids(doc_ids)
+                    rel_rows = await rag.full_relations.get_by_ids(doc_ids)
+                    for d_id, row in zip(doc_ids, ent_rows):
+                        if row:
+                            entity_count_map[d_id] = int(row.get("count", 0) or 0)
+                    for d_id, row in zip(doc_ids, rel_rows):
+                        if row:
+                            relation_count_map[d_id] = int(row.get("count", 0) or 0)
+                except Exception as agg_err:
+                    logger.warning(f"Entity/relation count aggregation failed: {agg_err}")
+
             # Convert documents to response format
             doc_responses = []
             for doc_id, doc in documents_with_ids:
@@ -3281,6 +3320,8 @@ def create_document_routes(
                         updated_at=format_datetime(doc.updated_at),
                         track_id=doc.track_id,
                         chunks_count=doc.chunks_count,
+                        entity_count=entity_count_map.get(doc_id),
+                        relation_count=relation_count_map.get(doc_id),
                         error_msg=doc.error_msg,
                         metadata=doc.metadata,
                         file_path=doc.file_path,

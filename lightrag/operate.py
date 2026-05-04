@@ -3166,6 +3166,8 @@ async def kg_query(
     hashing_kv: BaseKVStorage | None = None,
     system_prompt: str | None = None,
     chunks_vdb: BaseVectorStorage = None,
+    entity_chunks_storage: BaseKVStorage | None = None,
+    relation_chunks_storage: BaseKVStorage | None = None,
 ) -> QueryResult | None:
     """
     Execute knowledge graph query and return unified QueryResult object.
@@ -3207,6 +3209,14 @@ async def kg_query(
         # Apply higher priority (5) to query relation LLM function
         use_model_func = partial(use_model_func, _priority=5)
 
+    # --- Stat mode: direct graph statistics (must be after use_model_func defined) ---
+    if query_param.mode == "stat":
+        from lightrag.stat_query import handle_stat_query
+        answer = await handle_stat_query(
+            query, knowledge_graph_inst, use_model_func
+        )
+        return QueryResult(content=answer)
+
     hl_keywords, ll_keywords = await get_keywords_from_query(
         query, query_param, global_config, hashing_kv
     )
@@ -3240,6 +3250,8 @@ async def kg_query(
         text_chunks_db,
         query_param,
         chunks_vdb,
+        entity_chunks_storage=entity_chunks_storage,
+        relation_chunks_storage=relation_chunks_storage,
     )
 
     if context_result is None:
@@ -3572,6 +3584,97 @@ async def _get_vector_context(
         return []
 
 
+# Phase E: Metadata-scoped Cypher classifier.
+# Cypher routes to TLU bibliographic graph (Document/Person/Topic).
+# Only true for queries explicitly targeting metadata. Generic "liệt kê X"
+# stays in mix because it usually targets content, not metadata.
+_METADATA_INDICATORS_VI = [
+    "bao nhiêu tài liệu", "bao nhiêu luận văn", "bao nhiêu paper",
+    "bao nhiêu bài", "đếm số tài liệu",
+    "tác giả", "ai viết", "ai là tác giả",
+    "năm xuất bản", "xuất bản năm", "công bố năm",
+    "thuộc khoa", "thuộc ngành", "ngành nào",
+    "publisher",
+    "danh sách tác giả", "danh sách tài liệu", "danh sách luận văn",
+    "top tác giả", "top luận văn",
+]
+_METADATA_INDICATORS_EN = [
+    "how many documents", "how many papers", "how many theses",
+    "which author", "who wrote", "author of",
+    "year published", "publisher",
+    "list of authors", "list of papers", "list of documents",
+    "top authors", "top papers",
+]
+
+
+def _is_metadata_query(query: str) -> bool:
+    """Conservative classifier: only True if query targets bibliographic metadata.
+
+    Bias toward mix mode (false negatives preferred over false positives,
+    since cypher answer for semantic query = wrong answer).
+    """
+    q = (query or "").lower()
+    return any(kw in q for kw in _METADATA_INDICATORS_VI + _METADATA_INDICATORS_EN)
+
+
+async def _enrich_entities_from_junction(
+    entity_hits: list[dict],
+    entity_chunks_storage: BaseKVStorage | None,
+) -> list[dict]:
+    """Inject source_id into entity hits from junction lookup.
+
+    Junction key = entity_name (NOT vector id).
+    Junction value: {"chunk_ids": [list]}.
+    Format source_id = '<SEP>'.join(chunk_ids) per existing convention.
+    """
+    if not entity_chunks_storage or not entity_hits:
+        return entity_hits
+    enriched = []
+    for hit in entity_hits:
+        entity_name = hit.get("entity_name")
+        if not entity_name:
+            enriched.append(hit)
+            continue
+        try:
+            junction = await entity_chunks_storage.get_by_id(entity_name)
+        except Exception:
+            junction = None
+        if junction and junction.get("chunk_ids"):
+            hit = dict(hit)
+            hit["source_id"] = GRAPH_FIELD_SEP.join(junction["chunk_ids"])
+        enriched.append(hit)
+    return enriched
+
+
+async def _enrich_relations_from_junction(
+    relation_hits: list[dict],
+    relation_chunks_storage: BaseKVStorage | None,
+) -> list[dict]:
+    """Inject source_id into relation hits from junction lookup.
+
+    Junction key = make_relation_chunk_key(src, tgt) (utils.py:2948).
+    """
+    if not relation_chunks_storage or not relation_hits:
+        return relation_hits
+    enriched = []
+    for hit in relation_hits:
+        src = hit.get("src_id")
+        tgt = hit.get("tgt_id")
+        if not (src and tgt):
+            enriched.append(hit)
+            continue
+        key = make_relation_chunk_key(src, tgt)
+        try:
+            junction = await relation_chunks_storage.get_by_id(key)
+        except Exception:
+            junction = None
+        if junction and junction.get("chunk_ids"):
+            hit = dict(hit)
+            hit["source_id"] = GRAPH_FIELD_SEP.join(junction["chunk_ids"])
+        enriched.append(hit)
+    return enriched
+
+
 async def _perform_kg_search(
     query: str,
     ll_keywords: str,
@@ -3582,6 +3685,8 @@ async def _perform_kg_search(
     text_chunks_db: BaseKVStorage,
     query_param: QueryParam,
     chunks_vdb: BaseVectorStorage = None,
+    entity_chunks_storage: BaseKVStorage | None = None,
+    relation_chunks_storage: BaseKVStorage | None = None,
 ) -> dict[str, Any]:
     """
     Pure search logic that retrieves raw entities, relations, and vector chunks.
@@ -3619,38 +3724,11 @@ async def _perform_kg_search(
                 logger.warning(f"Failed to pre-compute query embedding: {e}")
                 query_embedding = None
 
-    # --- Text2Cypher: replace entity/relation vector search with Neo4j Cypher ---
+    # Phase E (Text2Cypher auto-classifier) removed.
+    # Bibliography stat queries now route via dedicated `mode=stat` (handled earlier).
     cypher_facts_text = ""
-    if query_param.mode in ("local", "global", "hybrid", "mix"):
-        try:
-            from lightrag.text2cypher import (
-                generate_cypher,
-                Neo4jExecutor,
-                format_cypher_results,
-            )
-            import asyncio
 
-            # Get LLM function from global config
-            llm_func = knowledge_graph_inst.global_config.get("llm_model_func")
-            if llm_func:
-                cypher = await generate_cypher(query, llm_func)
-                if cypher:
-                    executor = Neo4jExecutor()
-                    records = executor.execute(cypher)
-                    executor.close()
-                    if records:
-                        cypher_facts_text = format_cypher_results(records)
-                        logger.info(f"Text2Cypher returned {len(records)} records")
-                    else:
-                        logger.info("Text2Cypher: no records returned")
-                else:
-                    logger.info("Text2Cypher: could not generate Cypher")
-            else:
-                logger.info("Text2Cypher: no LLM function available")
-        except Exception as e:
-            logger.warning(f"Text2Cypher failed, continuing without: {e}")
-
-    # Get vector chunks for mix mode (unchanged)
+    # Vector chunks (mix mode + naive path always when chunks_vdb available)
     if query_param.mode == "mix" and chunks_vdb:
         vector_chunks = await _get_vector_context(
             query,
@@ -3667,12 +3745,91 @@ async def _perform_kg_search(
                     "order": i + 1,
                 }
 
-    # No entity/relation merge needed — Cypher replaces both
+    # --- Phase D: VDB entity/relation search + metadata enrich + junction inject ---
     final_entities = []
     final_relations = []
 
+    if query_param.mode in ("local", "global", "hybrid", "mix"):
+        try:
+            # Step 1: VDB search
+            if entities_vdb is not None:
+                entity_vdb_hits = await entities_vdb.query(
+                    query=query,
+                    top_k=query_param.top_k,
+                    query_embedding=query_embedding,
+                ) or []
+            else:
+                entity_vdb_hits = []
+
+            if relationships_vdb is not None:
+                relation_vdb_hits = await relationships_vdb.query(
+                    query=query,
+                    top_k=query_param.top_k,
+                    query_embedding=query_embedding,
+                ) or []
+            else:
+                relation_vdb_hits = []
+
+            # Step 2: Enrich entities with graph metadata (description/type/file_path/source_id)
+            if entity_vdb_hits and knowledge_graph_inst is not None:
+                entity_names = [
+                    hit["entity_name"] for hit in entity_vdb_hits if hit.get("entity_name")
+                ]
+                if entity_names:
+                    nodes = await knowledge_graph_inst.get_nodes_batch(entity_names)
+                    # nodes: dict[entity_name -> node_data]; lookup by key, do NOT zip
+                    for hit in entity_vdb_hits:
+                        node = nodes.get(hit.get("entity_name"))
+                        if node:
+                            hit.update({
+                                "description": node.get("description", ""),
+                                "entity_type": node.get("entity_type", ""),
+                                "file_path": node.get("file_path", hit.get("file_path", "")),
+                                "source_id": node.get("source_id", hit.get("source_id", "")),
+                            })
+
+            # Step 3: Enrich relations with graph metadata
+            if relation_vdb_hits and knowledge_graph_inst is not None:
+                edge_pairs = [
+                    {"src": hit["src_id"], "tgt": hit["tgt_id"]}
+                    for hit in relation_vdb_hits
+                    if hit.get("src_id") and hit.get("tgt_id")
+                ]
+                if edge_pairs:
+                    edges = await knowledge_graph_inst.get_edges_batch(edge_pairs)
+                    # edges: dict[(src,tgt) -> edge_data]; lookup by tuple key
+                    for hit in relation_vdb_hits:
+                        edge = edges.get((hit.get("src_id"), hit.get("tgt_id")))
+                        if edge:
+                            hit.update({
+                                "description": edge.get("description", ""),
+                                "keywords": edge.get("keywords", ""),
+                                "weight": edge.get("weight", 1.0),
+                                "file_path": edge.get("file_path", hit.get("file_path", "")),
+                                "source_id": edge.get("source_id", hit.get("source_id", "")),
+                            })
+
+            # Step 4: Inject source_id from junction (overrides graph source_id when junction richer)
+            final_entities = await _enrich_entities_from_junction(
+                entity_vdb_hits, entity_chunks_storage
+            )
+            final_relations = await _enrich_relations_from_junction(
+                relation_vdb_hits, relation_chunks_storage
+            )
+
+            logger.info(
+                f"KG search: entities={len(final_entities)}, relations={len(final_relations)}, "
+                f"junction_storage={'yes' if entity_chunks_storage else 'no'}"
+            )
+        except Exception as e:
+            logger.warning(f"KG entity/relation search failed: {e}")
+            final_entities = []
+            final_relations = []
+
     logger.info(
-        f"Raw search results: cypher_facts={'yes' if cypher_facts_text else 'no'}, {len(vector_chunks)} vector chunks"
+        f"Raw search results: cypher_facts={'yes' if cypher_facts_text else 'no'}, "
+        f"entities={len(final_entities)}, relations={len(final_relations)}, "
+        f"vector_chunks={len(vector_chunks)}"
     )
 
     return {
@@ -4182,6 +4339,8 @@ async def _build_query_context(
     text_chunks_db: BaseKVStorage,
     query_param: QueryParam,
     chunks_vdb: BaseVectorStorage = None,
+    entity_chunks_storage: BaseKVStorage | None = None,
+    relation_chunks_storage: BaseKVStorage | None = None,
 ) -> QueryContextResult | None:
     """
     Main query context building function using the new 4-stage architecture:
@@ -4205,6 +4364,8 @@ async def _build_query_context(
         text_chunks_db,
         query_param,
         chunks_vdb,
+        entity_chunks_storage=entity_chunks_storage,
+        relation_chunks_storage=relation_chunks_storage,
     )
 
     if not search_result["final_entities"] and not search_result["final_relations"]:

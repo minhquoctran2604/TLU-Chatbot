@@ -1344,6 +1344,8 @@ export default function DocumentManager() {
                         <TableHead>{t('documentPanel.documentManager.columns.status')}</TableHead>
                         <TableHead>{t('documentPanel.documentManager.columns.length')}</TableHead>
                         <TableHead>{t('documentPanel.documentManager.columns.chunks')}</TableHead>
+                        <TableHead>{t('documentPanel.documentManager.columns.entities')}</TableHead>
+                        <TableHead>{t('documentPanel.documentManager.columns.relations')}</TableHead>
                         <TableHead
                           onClick={() => handleSort('created_at')}
                           className="cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-800 select-none"
@@ -1455,6 +1457,8 @@ export default function DocumentManager() {
                           </TableCell>
                           <TableCell>{doc.content_length ?? '-'}</TableCell>
                           <TableCell>{doc.chunks_count ?? '-'}</TableCell>
+                          <TableCell>{doc.entity_count ?? '-'}</TableCell>
+                          <TableCell>{doc.relation_count ?? '-'}</TableCell>
                           <TableCell className="truncate">
                             {new Date(doc.created_at).toLocaleString()}
                           </TableCell>

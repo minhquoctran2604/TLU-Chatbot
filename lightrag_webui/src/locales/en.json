@@ -131,6 +131,8 @@
         "status": "Status",
         "length": "Length",
         "chunks": "Chunks",
+        "entities": "Entities",
+        "relations": "Relations",
         "created": "Created",
         "updated": "Updated",
         "metadata": "Metadata",
@@ -407,7 +409,8 @@
         "global": "Global",
         "hybrid": "Hybrid",
         "mix": "Mix",
-        "bypass": "Bypass"
+        "bypass": "Bypass",
+        "stat": "Stat"
       },
       "responseFormat": "Response Format",
       "responseFormatTooltip": "Defines the response format. Examples:\n• Multiple Paragraphs\n• Single Paragraph\n• Bullet Points",

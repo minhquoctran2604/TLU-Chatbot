@@ -488,7 +488,30 @@ def create_app(args):
     def create_optimized_openai_llm_func(
         config_cache: LLMConfigCache, args, llm_timeout: int
     ):
-        """Create optimized OpenAI LLM function with pre-processed configuration"""
+        """Create optimized OpenAI LLM function with pre-processed configuration.
+
+        Supports runtime failover via env var LLM_FAILOVER_MODELS (comma-separated).
+        Primary = args.llm_model; on rate-limit/error, walks failover chain.
+        Cooldown: failed model skipped for LLM_COOLDOWN_SEC (default 60s).
+        """
+        import time
+        from lightrag.llm.openai import openai_complete_if_cache
+
+        # Parse failover chain. Primary first; remaining read from env.
+        _failover_env = os.getenv("LLM_FAILOVER_MODELS", "").strip()
+        _failover_models: list[str] = [args.llm_model]
+        if _failover_env:
+            for m in _failover_env.split(","):
+                m = m.strip()
+                if m and m != args.llm_model:
+                    _failover_models.append(m)
+        _cooldown: dict[str, float] = {}
+        _COOLDOWN_SEC = int(os.getenv("LLM_COOLDOWN_SEC", "60"))
+
+        if len(_failover_models) > 1:
+            logger.info(
+                f"LLM failover chain: {_failover_models} (cooldown {_COOLDOWN_SEC}s)"
+            )
 
         async def optimized_openai_alike_model_complete(
             prompt,
@@ -497,8 +520,6 @@ def create_app(args):
             keyword_extraction=False,
             **kwargs,
         ) -> str:
-            from lightrag.llm.openai import openai_complete_if_cache
-
             keyword_extraction = kwargs.pop("keyword_extraction", None)
             if keyword_extraction:
                 kwargs["response_format"] = GPTKeywordExtractionFormat
@@ -510,14 +531,47 @@ def create_app(args):
             if config_cache.openai_llm_options:
                 kwargs.update(config_cache.openai_llm_options)
 
-            return await openai_complete_if_cache(
-                args.llm_model,
-                prompt,
-                system_prompt=system_prompt,
-                history_messages=history_messages,
-                base_url=args.llm_binding_host,
-                api_key=args.llm_binding_api_key,
-                **kwargs,
+            now = time.time()
+            last_err: Exception | None = None
+            for model in _failover_models:
+                if _cooldown.get(model, 0) > now:
+                    logger.debug(f"LLM failover: skip {model} (cooldown)")
+                    continue
+                try:
+                    return await openai_complete_if_cache(
+                        model,
+                        prompt,
+                        system_prompt=system_prompt,
+                        history_messages=history_messages,
+                        base_url=args.llm_binding_host,
+                        api_key=args.llm_binding_api_key,
+                        **kwargs,
+                    )
+                except Exception as e:
+                    last_err = e
+                    err_str = str(e)
+                    is_rate_limit = (
+                        "429" in err_str
+                        or "rate_limit" in err_str.lower()
+                        or "quota" in err_str.lower()
+                        or "exhausted" in err_str.lower()
+                    )
+                    if is_rate_limit:
+                        _cooldown[model] = now + _COOLDOWN_SEC
+                        logger.warning(
+                            f"LLM failover: {model} rate-limited, "
+                            f"cooldown {_COOLDOWN_SEC}s. Trying next."
+                        )
+                    else:
+                        logger.warning(
+                            f"LLM failover: {model} error: {err_str[:150]}. "
+                            f"Trying next."
+                        )
+                    continue
+            # All providers exhausted.
+            raise RuntimeError(
+                f"LLM failover exhausted all {len(_failover_models)} providers. "
+                f"Last error: {last_err}"
             )
 
         return optimized_openai_alike_model_complete

@@ -16,7 +16,7 @@ You are a Knowledge Graph Specialist responsible for extracting entities and rel
     *   **Identification:** Identify clearly defined and meaningful entities in the input text.
     *   **Entity Details:** For each identified entity, extract the following information:
         *   `entity_name`: The name of the entity. If the entity name is case-insensitive, capitalize the first letter of each significant word (title case). Ensure **consistent naming** across the entire extraction process.
-        *   `entity_type`: Categorize the entity using one of the following types: `{entity_types}`. If none of the provided entity types apply, do not add new entity type and classify it as `Other`.
+        *   `entity_type`: Categorize the entity using one of the following types: `{entity_types}`. If none of the provided entity types apply, **SKIP the entity entirely** (do NOT classify as "Other" or any new type). Maintaining a clean typed graph is more important than capturing every entity.
         *   `entity_description`: Provide a concise yet comprehensive description of the entity's attributes and activities, based *solely* on the information present in the input text.
     *   **Output Format - Entities:** Output a total of 4 fields for each entity, delimited by `{tuple_delimiter}`, on a single line. The first field *must* be the literal string `entity`.
         *   Format: `entity{tuple_delimiter}entity_name{tuple_delimiter}entity_type{tuple_delimiter}entity_description`
@@ -101,82 +101,72 @@ Based on the last extraction task, identify and extract any **missed or incorrec
 
 PROMPTS["entity_extraction_examples"] = [
     """<Entity_types>
-["Person","Creature","Organization","Location","Event","Concept","Method","Content","Data","Artifact","NaturalObject"]
+["concept","algorithm","data_structure","language","framework","tool","architecture","metric","person","organization"]
 
 <Input Text>
 ```
-while Alex clenched his jaw, the buzz of frustration dull against the backdrop of Taylor's authoritarian certainty. It was this competitive undercurrent that kept him alert, the sense that his and Jordan's shared commitment to discovery was an unspoken rebellion against Cruz's narrowing vision of control and order.
-
-Then Taylor did something unexpected. They paused beside Jordan and, for a moment, observed the device with something akin to reverence. "If this tech can be understood..." Taylor said, their voice quieter, "It could change the game for us. For all of us."
-
-The underlying dismissal earlier seemed to falter, replaced by a glimpse of reluctant respect for the gravity of what lay in their hands. Jordan looked up, and for a fleeting heartbeat, their eyes locked with Taylor's, a wordless clash of wills softening into an uneasy truce.
-
-It was a small transformation, barely perceptible, but one that Alex noted with an inward nod. They had all been brought here by different paths
+Laravel là một PHP framework phổ biến triển khai mô hình kiến trúc MVC. Nó cung cấp routing và Eloquent ORM. Để chạy Laravel, máy cần PHP và web server như Apache hoặc Nginx.
 ```
 
 <Output>
-entity{tuple_delimiter}Alex{tuple_delimiter}person{tuple_delimiter}Alex is a character who experiences frustration and is observant of the dynamics among other characters.
-entity{tuple_delimiter}Taylor{tuple_delimiter}person{tuple_delimiter}Taylor is portrayed with authoritarian certainty and shows a moment of reverence towards a device, indicating a change in perspective.
-entity{tuple_delimiter}Jordan{tuple_delimiter}person{tuple_delimiter}Jordan shares a commitment to discovery and has a significant interaction with Taylor regarding a device.
-entity{tuple_delimiter}Cruz{tuple_delimiter}person{tuple_delimiter}Cruz is associated with a vision of control and order, influencing the dynamics among other characters.
-entity{tuple_delimiter}The Device{tuple_delimiter}equipment{tuple_delimiter}The Device is central to the story, with potential game-changing implications, and is revered by Taylor.
-relation{tuple_delimiter}Alex{tuple_delimiter}Taylor{tuple_delimiter}power dynamics, observation{tuple_delimiter}Alex observes Taylor's authoritarian behavior and notes changes in Taylor's attitude toward the device.
-relation{tuple_delimiter}Alex{tuple_delimiter}Jordan{tuple_delimiter}shared goals, rebellion{tuple_delimiter}Alex and Jordan share a commitment to discovery, which contrasts with Cruz's vision.)
-relation{tuple_delimiter}Taylor{tuple_delimiter}Jordan{tuple_delimiter}conflict resolution, mutual respect{tuple_delimiter}Taylor and Jordan interact directly regarding the device, leading to a moment of mutual respect and an uneasy truce.
-relation{tuple_delimiter}Jordan{tuple_delimiter}Cruz{tuple_delimiter}ideological conflict, rebellion{tuple_delimiter}Jordan's commitment to discovery is in rebellion against Cruz's vision of control and order.
-relation{tuple_delimiter}Taylor{tuple_delimiter}The Device{tuple_delimiter}reverence, technological significance{tuple_delimiter}Taylor shows reverence towards the device, indicating its importance and potential impact.
+entity{tuple_delimiter}Laravel{tuple_delimiter}framework{tuple_delimiter}Laravel là PHP framework phổ biến, cung cấp routing và Eloquent ORM, triển khai mô hình MVC.
+entity{tuple_delimiter}PHP{tuple_delimiter}language{tuple_delimiter}PHP là ngôn ngữ lập trình server-side, là dependency cốt lõi của Laravel.
+entity{tuple_delimiter}MVC{tuple_delimiter}architecture{tuple_delimiter}MVC (Model-View-Controller) là mô hình kiến trúc phần mềm, được Laravel triển khai.
+entity{tuple_delimiter}Eloquent ORM{tuple_delimiter}tool{tuple_delimiter}Eloquent ORM là object-relational mapper tích hợp trong Laravel, hỗ trợ thao tác cơ sở dữ liệu.
+entity{tuple_delimiter}Apache{tuple_delimiter}tool{tuple_delimiter}Apache là web server phổ biến dùng để chạy ứng dụng PHP/Laravel.
+entity{tuple_delimiter}Nginx{tuple_delimiter}tool{tuple_delimiter}Nginx là web server hiệu năng cao, có thể thay thế Apache cho ứng dụng PHP/Laravel.
+relation{tuple_delimiter}Laravel{tuple_delimiter}PHP{tuple_delimiter}language dependency, requires{tuple_delimiter}Laravel sử dụng PHP làm ngôn ngữ nền tảng.
+relation{tuple_delimiter}Laravel{tuple_delimiter}MVC{tuple_delimiter}architecture pattern, implements{tuple_delimiter}Laravel hiện thực mô hình kiến trúc MVC.
+relation{tuple_delimiter}Laravel{tuple_delimiter}Eloquent ORM{tuple_delimiter}tool dependency, uses{tuple_delimiter}Laravel sử dụng Eloquent ORM để thao tác cơ sở dữ liệu.
+relation{tuple_delimiter}Laravel{tuple_delimiter}Apache{tuple_delimiter}runtime environment, hosted by{tuple_delimiter}Laravel có thể chạy trên web server Apache.
+relation{tuple_delimiter}Laravel{tuple_delimiter}Nginx{tuple_delimiter}runtime environment, hosted by{tuple_delimiter}Laravel có thể chạy trên web server Nginx.
 {completion_delimiter}
 
 """,
     """<Entity_types>
-["Person","Creature","Organization","Location","Event","Concept","Method","Content","Data","Artifact","NaturalObject"]
+["concept","algorithm","data_structure","language","framework","tool","architecture","metric","person","organization"]
 
 <Input Text>
 ```
-Stock markets faced a sharp downturn today as tech giants saw significant declines, with the global tech index dropping by 3.4% in midday trading. Analysts attribute the selloff to investor concerns over rising interest rates and regulatory uncertainty.
-
-Among the hardest hit, nexon technologies saw its stock plummet by 7.8% after reporting lower-than-expected quarterly earnings. In contrast, Omega Energy posted a modest 2.1% gain, driven by rising oil prices.
-
-Meanwhile, commodity markets reflected a mixed sentiment. Gold futures rose by 1.5%, reaching $2,080 per ounce, as investors sought safe-haven assets. Crude oil prices continued their rally, climbing to $87.60 per barrel, supported by supply constraints and strong demand.
-
-Financial experts are closely watching the Federal Reserve's next move, as speculation grows over potential rate hikes. The upcoming policy announcement is expected to influence investor confidence and overall market stability.
+Thuật toán Dijkstra do Edsger Dijkstra phát triển năm 1956, dùng để tìm đường đi ngắn nhất trên đồ thị có trọng số không âm. Thuật toán sử dụng priority queue để chọn đỉnh có khoảng cách nhỏ nhất tại mỗi bước. Khác với Bellman-Ford, Dijkstra không xử lý được trọng số âm. Độ phức tạp thời gian là O((V+E)logV) khi dùng binary heap.
 ```
 
 <Output>
-entity{tuple_delimiter}Global Tech Index{tuple_delimiter}category{tuple_delimiter}The Global Tech Index tracks the performance of major technology stocks and experienced a 3.4% decline today.
-entity{tuple_delimiter}Nexon Technologies{tuple_delimiter}organization{tuple_delimiter}Nexon Technologies is a tech company that saw its stock decline by 7.8% after disappointing earnings.
-entity{tuple_delimiter}Omega Energy{tuple_delimiter}organization{tuple_delimiter}Omega Energy is an energy company that gained 2.1% in stock value due to rising oil prices.
-entity{tuple_delimiter}Gold Futures{tuple_delimiter}product{tuple_delimiter}Gold futures rose by 1.5%, indicating increased investor interest in safe-haven assets.
-entity{tuple_delimiter}Crude Oil{tuple_delimiter}product{tuple_delimiter}Crude oil prices rose to $87.60 per barrel due to supply constraints and strong demand.
-entity{tuple_delimiter}Market Selloff{tuple_delimiter}category{tuple_delimiter}Market selloff refers to the significant decline in stock values due to investor concerns over interest rates and regulations.
-entity{tuple_delimiter}Federal Reserve Policy Announcement{tuple_delimiter}category{tuple_delimiter}The Federal Reserve's upcoming policy announcement is expected to impact investor confidence and market stability.
-entity{tuple_delimiter}3.4% Decline{tuple_delimiter}category{tuple_delimiter}The Global Tech Index experienced a 3.4% decline in midday trading.
-relation{tuple_delimiter}Global Tech Index{tuple_delimiter}Market Selloff{tuple_delimiter}market performance, investor sentiment{tuple_delimiter}The decline in the Global Tech Index is part of the broader market selloff driven by investor concerns.
-relation{tuple_delimiter}Nexon Technologies{tuple_delimiter}Global Tech Index{tuple_delimiter}company impact, index movement{tuple_delimiter}Nexon Technologies' stock decline contributed to the overall drop in the Global Tech Index.
-relation{tuple_delimiter}Gold Futures{tuple_delimiter}Market Selloff{tuple_delimiter}market reaction, safe-haven investment{tuple_delimiter}Gold prices rose as investors sought safe-haven assets during the market selloff.
-relation{tuple_delimiter}Federal Reserve Policy Announcement{tuple_delimiter}Market Selloff{tuple_delimiter}interest rate impact, financial regulation{tuple_delimiter}Speculation over Federal Reserve policy changes contributed to market volatility and investor selloff.
+entity{tuple_delimiter}Dijkstra Algorithm{tuple_delimiter}algorithm{tuple_delimiter}Dijkstra Algorithm là thuật toán tìm đường đi ngắn nhất trên đồ thị có trọng số không âm, do Edsger Dijkstra phát triển năm 1956.
+entity{tuple_delimiter}Edsger Dijkstra{tuple_delimiter}person{tuple_delimiter}Edsger Dijkstra là nhà khoa học máy tính, người phát triển thuật toán Dijkstra năm 1956.
+entity{tuple_delimiter}Shortest Path{tuple_delimiter}concept{tuple_delimiter}Shortest Path là bài toán tìm đường đi ngắn nhất giữa các đỉnh trên đồ thị, được giải bằng các thuật toán như Dijkstra hoặc Bellman-Ford.
+entity{tuple_delimiter}Priority Queue{tuple_delimiter}data_structure{tuple_delimiter}Priority Queue là cấu trúc dữ liệu hàng đợi ưu tiên, dùng để chọn phần tử có giá trị nhỏ nhất hoặc lớn nhất.
+entity{tuple_delimiter}Bellman-Ford Algorithm{tuple_delimiter}algorithm{tuple_delimiter}Bellman-Ford là thuật toán tìm đường đi ngắn nhất xử lý được trọng số âm, khác với Dijkstra.
+entity{tuple_delimiter}Binary Heap{tuple_delimiter}data_structure{tuple_delimiter}Binary Heap là cấu trúc dữ liệu cây nhị phân được dùng để hiện thực Priority Queue.
+entity{tuple_delimiter}O((V+E)logV){tuple_delimiter}metric{tuple_delimiter}O((V+E)logV) là độ phức tạp thời gian của thuật toán Dijkstra khi dùng binary heap.
+relation{tuple_delimiter}Dijkstra Algorithm{tuple_delimiter}Edsger Dijkstra{tuple_delimiter}inventor, developed by{tuple_delimiter}Thuật toán Dijkstra được Edsger Dijkstra phát triển năm 1956.
+relation{tuple_delimiter}Dijkstra Algorithm{tuple_delimiter}Shortest Path{tuple_delimiter}solves problem, applied to{tuple_delimiter}Dijkstra Algorithm giải bài toán Shortest Path trên đồ thị có trọng số không âm.
+relation{tuple_delimiter}Dijkstra Algorithm{tuple_delimiter}Priority Queue{tuple_delimiter}data structure dependency, uses{tuple_delimiter}Dijkstra sử dụng Priority Queue để chọn đỉnh có khoảng cách nhỏ nhất tại mỗi bước.
+relation{tuple_delimiter}Dijkstra Algorithm{tuple_delimiter}Bellman-Ford Algorithm{tuple_delimiter}algorithm comparison, contrasts with{tuple_delimiter}Dijkstra nhanh hơn Bellman-Ford nhưng không xử lý trọng số âm.
+relation{tuple_delimiter}Priority Queue{tuple_delimiter}Binary Heap{tuple_delimiter}implementation, implemented by{tuple_delimiter}Priority Queue thường được hiện thực bằng Binary Heap.
+relation{tuple_delimiter}Dijkstra Algorithm{tuple_delimiter}O((V+E)logV){tuple_delimiter}complexity, measured by{tuple_delimiter}Độ phức tạp thời gian của Dijkstra khi dùng binary heap là O((V+E)logV).
 {completion_delimiter}
 
 """,
     """<Entity_types>
-["Person","Creature","Organization","Location","Event","Concept","Method","Content","Data","Artifact","NaturalObject"]
+["concept","algorithm","data_structure","language","framework","tool","architecture","metric","person","organization"]
 
 <Input Text>
 ```
-At the World Athletics Championship in Tokyo, Noah Carter broke the 100m sprint record using cutting-edge carbon-fiber spikes.
+Kiến trúc Von Neumann là mô hình máy tính cơ bản với bộ nhớ chung lưu cả lệnh và dữ liệu. Khác với kiến trúc Harvard có bộ nhớ riêng cho lệnh và dữ liệu, Von Neumann đơn giản hơn nhưng có hạn chế "Von Neumann bottleneck". CPU truy cập bộ nhớ qua bus hệ thống. Cache là bộ nhớ tốc độ cao đặt giữa CPU và bộ nhớ chính để tăng hiệu năng, đo bằng cache hit rate.
 ```
 
 <Output>
-entity{tuple_delimiter}World Athletics Championship{tuple_delimiter}event{tuple_delimiter}The World Athletics Championship is a global sports competition featuring top athletes in track and field.
-entity{tuple_delimiter}Tokyo{tuple_delimiter}location{tuple_delimiter}Tokyo is the host city of the World Athletics Championship.
-entity{tuple_delimiter}Noah Carter{tuple_delimiter}person{tuple_delimiter}Noah Carter is a sprinter who set a new record in the 100m sprint at the World Athletics Championship.
-entity{tuple_delimiter}100m Sprint Record{tuple_delimiter}category{tuple_delimiter}The 100m sprint record is a benchmark in athletics, recently broken by Noah Carter.
-entity{tuple_delimiter}Carbon-Fiber Spikes{tuple_delimiter}equipment{tuple_delimiter}Carbon-fiber spikes are advanced sprinting shoes that provide enhanced speed and traction.
-entity{tuple_delimiter}World Athletics Federation{tuple_delimiter}organization{tuple_delimiter}The World Athletics Federation is the governing body overseeing the World Athletics Championship and record validations.
-relation{tuple_delimiter}World Athletics Championship{tuple_delimiter}Tokyo{tuple_delimiter}event location, international competition{tuple_delimiter}The World Athletics Championship is being hosted in Tokyo.
-relation{tuple_delimiter}Noah Carter{tuple_delimiter}100m Sprint Record{tuple_delimiter}athlete achievement, record-breaking{tuple_delimiter}Noah Carter set a new 100m sprint record at the championship.
-relation{tuple_delimiter}Noah Carter{tuple_delimiter}Carbon-Fiber Spikes{tuple_delimiter}athletic equipment, performance boost{tuple_delimiter}Noah Carter used carbon-fiber spikes to enhance performance during the race.
-relation{tuple_delimiter}Noah Carter{tuple_delimiter}World Athletics Championship{tuple_delimiter}athlete participation, competition{tuple_delimiter}Noah Carter is competing at the World Athletics Championship.
+entity{tuple_delimiter}Von Neumann Architecture{tuple_delimiter}architecture{tuple_delimiter}Von Neumann Architecture là mô hình máy tính cơ bản với bộ nhớ chung lưu cả lệnh và dữ liệu, có hạn chế Von Neumann bottleneck.
+entity{tuple_delimiter}Harvard Architecture{tuple_delimiter}architecture{tuple_delimiter}Harvard Architecture là mô hình máy tính có bộ nhớ riêng cho lệnh và dữ liệu, khác với Von Neumann.
+entity{tuple_delimiter}CPU{tuple_delimiter}concept{tuple_delimiter}CPU là bộ xử lý trung tâm của máy tính, truy cập bộ nhớ qua bus hệ thống.
+entity{tuple_delimiter}Cache{tuple_delimiter}concept{tuple_delimiter}Cache là bộ nhớ tốc độ cao đặt giữa CPU và bộ nhớ chính, dùng để tăng hiệu năng truy cập dữ liệu.
+entity{tuple_delimiter}System Bus{tuple_delimiter}concept{tuple_delimiter}System Bus là kênh truyền dữ liệu giữa CPU và bộ nhớ chính.
+entity{tuple_delimiter}Cache Hit Rate{tuple_delimiter}metric{tuple_delimiter}Cache Hit Rate là tỷ lệ truy cập trúng cache, đo lường hiệu năng của hệ thống cache.
+relation{tuple_delimiter}Von Neumann Architecture{tuple_delimiter}Harvard Architecture{tuple_delimiter}architecture comparison, contrasts with{tuple_delimiter}Von Neumann có bộ nhớ chung trong khi Harvard có bộ nhớ riêng cho lệnh và dữ liệu.
+relation{tuple_delimiter}CPU{tuple_delimiter}Cache{tuple_delimiter}memory hierarchy, uses{tuple_delimiter}CPU sử dụng Cache để giảm thời gian truy cập bộ nhớ chính.
+relation{tuple_delimiter}CPU{tuple_delimiter}System Bus{tuple_delimiter}data path, connected via{tuple_delimiter}CPU truy cập bộ nhớ qua System Bus.
+relation{tuple_delimiter}Cache{tuple_delimiter}Cache Hit Rate{tuple_delimiter}performance metric, measured by{tuple_delimiter}Hiệu năng của Cache được đo bằng Cache Hit Rate.
 {completion_delimiter}
 
 """,
