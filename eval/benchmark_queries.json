@@ -1,0 +1,330 @@
+{
+  "_meta": {
+    "version": "0.5.0",
+    "created": "2026-05-17",
+    "description": "TLU RAG semantic benchmark v0.5 — references extracted from actual slide content (corpus-grounded per KILT convention)",
+    "language": "vi",
+    "subjects": {
+      "ChuyenDeHTTT": {
+        "files": ["1. Tong quan ve he thong thong minh.pdf", "2. Chu de TTNT.md", "3. Chu de HTTT.md", "4. Chu de các VĐ CSDL.md"],
+        "queries": 8
+      },
+      "KienTrucMayTinh": {
+        "files": ["CH01-Introduction.md", "CH02-Computer_Evolution_and_Performance.md", "CH03-Chuc nang va ket noi.md", "CH04-Cache.md", "CH05-Main memory.md", "CH06-Storage.md", "CH07-Input_Output.md", "CH09-ALU.md", "CH10-Instruction set.md", "CH11-Instruction set - addressing mode.md", "CH12-CPU.md"],
+        "queries": 11
+      },
+      "CNWeeb": {
+        "files": ["5-CNWeb-PHP-Form.md", "7-CNWeb-PHP-MVC.md", "8-CNWeb-PHP-Laravel.md"],
+        "queries": 6
+      }
+    },
+    "type_distribution": {"factoid": 7, "relational": 6, "broad": 7, "aggregate": 5},
+    "total": 25,
+    "modes_tested": ["naive", "hybrid", "mix", "graph"],
+    "reference_provenance": "All references extracted/paraphrased from slide text. Each query lists source_file + source_section for traceability."
+  },
+  "queries": [
+    {
+      "id": "httt-fact-01",
+      "type": "factoid",
+      "subject": "ChuyenDeHTTT",
+      "topic": "Hệ thống thông minh",
+      "query": "Hệ thống thông minh là gì?",
+      "reference": "Hệ thống thông minh là các hệ thống lưu trữ, xử lý, truyền dữ liệu có sử dụng trí tuệ nhân tạo. Hệ thống thông minh có khả năng suy luận, hiệu, nhận dạng, nhận thức, sáng tạo. Hệ thống thông minh được xây dựng dựa trên nền tảng của Trí tuệ nhân tạo, đặc trưng bởi tính mềm dẻo, tính thích nghi, ghi nhớ, học, năng động, lập luận, khả năng quản trị thông tin không chắc chắn, thiếu chính xác.",
+      "source_file": "1. Tong quan ve he thong thong minh.pdf",
+      "source_section": "Giới thiệu hệ thống thông minh (p7-8)",
+      "expected_best_mode": "naive",
+      "keywords": ["hệ thống thông minh", "trí tuệ nhân tạo", "suy luận", "nhận dạng", "mềm dẻo", "thích nghi"]
+    },
+    {
+      "id": "httt-fact-02",
+      "type": "factoid",
+      "subject": "ChuyenDeHTTT",
+      "topic": "Biểu diễn tri thức",
+      "query": "Biểu diễn tri thức trong trí tuệ nhân tạo là gì?",
+      "reference": "Biểu diễn tri thức là phương pháp để mã hoá tri thức, nhằm thành lập cơ sở tri thức cho các hệ thống dựa trên tri thức (knowledge-based system). Tri thức thực của lĩnh vực gồm đối tượng và các quan hệ giữa chúng trong lĩnh vực, được biểu diễn bằng cách dùng các lược đồ biểu diễn (scheme). Chọn dùng lược đồ cho loại tri thức là vấn đề quan trọng. Tri thức tính toán gồm bảng ánh xạ giữa đối tượng thực sang đối tượng tính toán và quan hệ thực sang quan hệ tính toán.",
+      "source_file": "2. Chu de TTNT.md",
+      "source_section": "Các lược đồ biểu diễn tri thức - Định nghĩa",
+      "expected_best_mode": "naive",
+      "keywords": ["biểu diễn tri thức", "knowledge-based", "lược đồ", "scheme", "tri thức tính toán"]
+    },
+    {
+      "id": "httt-rel-01",
+      "type": "relational",
+      "subject": "ChuyenDeHTTT",
+      "topic": "HTTM-TTNT",
+      "query": "Mối quan hệ giữa hệ thống thông minh và trí tuệ nhân tạo?",
+      "reference": "Hệ thống thông minh được xây dựng dựa trên nền tảng của Trí tuệ nhân tạo. Trí tuệ nhân tạo làm cho máy tính có những khả năng của trí tuệ con người: bắt chước, hiểu ngôn ngữ, suy nghĩ, học tập. Hệ thống thông minh tích hợp các khả năng AI như hiểu ngôn ngữ tự nhiên, biểu diễn tri thức, lập luận tự động và học máy để thích nghi với hoàn cảnh và ngoại suy. Trí tuệ của hệ thống thông minh đặc trưng bởi tính mềm dẻo, thích nghi, ghi nhớ, học, năng động, lập luận.",
+      "source_file": "1. Tong quan ve he thong thong minh.pdf",
+      "source_section": "Giới thiệu hệ thống thông minh (p9-13)",
+      "expected_best_mode": "graph",
+      "keywords": ["hệ thống thông minh", "trí tuệ nhân tạo", "AI", "biểu diễn tri thức", "học máy", "hiểu ngôn ngữ"]
+    },
+    {
+      "id": "httt-rel-02",
+      "type": "relational",
+      "subject": "ChuyenDeHTTT",
+      "topic": "BigData-IoT",
+      "query": "Mối liên hệ giữa Big Data và IoT trong hệ thống thông minh?",
+      "reference": "Internet of Things (IoT) là sự kết nối trên mạng của các vật thể, thiết bị (smart devices), trao đổi thông tin qua internet mà không cần tương tác trực tiếp người-người hay người-máy. Big Data nói về các tập dữ liệu rất lớn và phức tạp, vượt quá khả năng xử lý của các kỹ thuật IT truyền thống. IoT sinh ra dữ liệu liên tục từ cảm biến và thiết bị, đóng vai trò là một trong những nguồn dữ liệu lớn quan trọng. Hệ thống thông minh trong CMCN 4.0 kết hợp IoT (thu thập dữ liệu) với Big Data (lưu trữ, phân tích) và AI (ra quyết định).",
+      "source_file": "1. Tong quan ve he thong thong minh.pdf",
+      "source_section": "Hệ thống thông minh trong CMCN 4.0 (p22-25)",
+      "expected_best_mode": "graph",
+      "keywords": ["IoT", "Big Data", "CMCN 4.0", "smart devices", "cảm biến", "dữ liệu lớn"]
+    },
+    {
+      "id": "httt-broad-01",
+      "type": "broad",
+      "subject": "ChuyenDeHTTT",
+      "topic": "Big Data đặc điểm",
+      "query": "Trình bày các đặc điểm của Big Data.",
+      "reference": "Big Data có các đặc điểm chính: 1) Volume (Dung lượng) — số lượng dữ liệu rất lớn, kích thước xác định giá trị và tiềm năng insight. 2) Variety (Tính đa dạng) — dữ liệu thu thập từ nhiều nguồn khác nhau với nhiều cấu trúc: có cấu trúc, không cấu trúc, truyền thống và không truyền thống. 3) Velocity (Tốc độ) — tốc độ dữ liệu được tạo ra và xử lý để đáp ứng các nhu cầu. 4) Veracity (Độ tin cậy) — chất lượng và tính xác thực của dữ liệu, cần loại bỏ nhiễu. 5) Value (Giá trị) — đo lường tính hữu ích của dữ liệu đối với doanh nghiệp. Ngoài ra còn có Variability (sự biến động), Validity (tính hợp lệ), Visualization (trực quan hóa).",
+      "source_file": "4. Chu de các VĐ CSDL.md",
+      "source_section": "Dữ liệu lớn - các đặc điểm",
+      "expected_best_mode": "mix",
+      "keywords": ["Big Data", "Volume", "Variety", "Velocity", "Veracity", "Value", "5V"]
+    },
+    {
+      "id": "httt-broad-02",
+      "type": "broad",
+      "subject": "ChuyenDeHTTT",
+      "topic": "Chuyển đổi số",
+      "query": "Trình bày khái niệm và mục tiêu của chuyển đổi số.",
+      "reference": "Chuyển đổi số (Digital Transformation) là quá trình sử dụng công nghệ số để cải thiện hoặc thay đổi toàn bộ các khía cạnh của một tổ chức hoặc doanh nghiệp, từ cách thức tổ chức, quản lý, quy trình sản xuất, cách thức hoạt động đến việc cung cấp dịch vụ và cách tương tác với đối tượng. Mục tiêu của chuyển đổi số là nâng cao hiệu quả hoạt động, tăng khả năng cạnh tranh và tạo ra giá trị mới. Đặc điểm của chuyển đổi số là dựa trên nền tảng công nghệ. Cốt lõi trong chuyển đổi số bao gồm dữ liệu, công nghệ và con người.",
+      "source_file": "3. Chu de HTTT.md",
+      "source_section": "Chuyển đổi số - khái niệm và mục tiêu",
+      "expected_best_mode": "mix",
+      "keywords": ["chuyển đổi số", "Digital Transformation", "công nghệ số", "tổ chức", "cạnh tranh"]
+    },
+    {
+      "id": "httt-agg-01",
+      "type": "aggregate",
+      "subject": "ChuyenDeHTTT",
+      "topic": "Các công nghệ AI",
+      "query": "So sánh ba loại công nghệ AI: phản ứng, bộ nhớ hạn chế và tự nhận thức.",
+      "reference": "Công nghệ AI có ba loại chính. AI phản ứng có khả năng phân tích những động thái khả thi nhất của chính mình và của đối thủ, từ đó đưa ra giải pháp tối ưu nhất, không sử dụng kinh nghiệm quá khứ. AI với bộ nhớ hạn chế có khả năng sử dụng những kinh nghiệm trong quá khứ để đưa ra quyết định trong tương lai, thường kết hợp với cảm biến môi trường xung quanh nhằm dự đoán những trường hợp tương lai. AI tự nhận thức có khả năng tự nhận thức về bản thân, có ý thức, là dạng AI cao cấp nhất, hiện vẫn đang là mục tiêu nghiên cứu chưa đạt được.",
+      "source_file": "2. Chu de TTNT.md",
+      "source_section": "Các công nghệ AI (Nền tảng TTNT 4.0)",
+      "expected_best_mode": "mix",
+      "keywords": ["AI phản ứng", "AI bộ nhớ hạn chế", "AI tự nhận thức", "công nghệ AI"]
+    },
+    {
+      "id": "httt-agg-02",
+      "type": "aggregate",
+      "subject": "ChuyenDeHTTT",
+      "topic": "GIS",
+      "query": "Trình bày các bộ phận cấu thành và mục đích chung của GIS.",
+      "reference": "Hệ thống thông tin địa lý (GIS) gồm các bộ phận cấu thành: phương pháp - kỹ thuật và các thao tác để nhập, quản lý, phân tích, thể hiện dữ liệu không gian (số hoá, xây dựng CSDL, phân tích không gian, xây dựng bản đồ, metadata); và con người - những người sử dụng, thiết kế, xây dựng, duy trì và bảo dưỡng GIS, cung cấp dữ liệu, giải thích và báo cáo kết quả. Mục đích chung của GIS bao gồm: nhập dữ liệu, thao tác dữ liệu, quản lý dữ liệu, hỏi đáp và phân tích, hiển thị. GIS là ngành khoa học xây dựng trên nhiều ngành: địa lý, bản đồ (Catography), viễn thám (Remote Sensing), đo đạc, CNTT, toán học, thống kê, quy hoạch.",
+      "source_file": "3. Chu de HTTT.md",
+      "source_section": "HỆ THỐNG THÔNG TIN ĐỊA LÝ - Các bộ phận cấu thành & Mục đích chung",
+      "expected_best_mode": "mix",
+      "keywords": ["GIS", "thông tin địa lý", "viễn thám", "bản đồ", "không gian", "metadata"]
+    },
+
+    {
+      "id": "ktmt-fact-01",
+      "type": "factoid",
+      "subject": "KienTrucMayTinh",
+      "topic": "Kiến trúc máy tính",
+      "query": "Kiến trúc máy tính khác gì với tổ chức máy tính?",
+      "reference": "Kiến trúc máy tính là các thuộc tính của một hệ thống hữu hình đối với người lập trình, hay có thể nói là các thuộc tính ảnh hưởng trực tiếp đến quá trình thực thi logic của chương trình. Tổ chức máy tính là các đơn vị hoạt động và các kết nối giữa chúng để hiện thực các thuộc tính kiến trúc. Nói cách khác, kiến trúc tập trung vào mô hình lập trình (tập lệnh, số bit biểu diễn, cơ chế I/O, kỹ thuật định địa chỉ), còn tổ chức tập trung vào hiện thực vật lý (tín hiệu điều khiển, giao diện, công nghệ bộ nhớ).",
+      "source_file": "CH01-Introduction.md",
+      "source_section": "1.2 Kiến trúc máy tính - Tổ chức và Kiến trúc",
+      "expected_best_mode": "naive",
+      "keywords": ["kiến trúc máy tính", "tổ chức máy tính", "thuộc tính", "mô hình lập trình", "hiện thực"]
+    },
+    {
+      "id": "ktmt-fact-02",
+      "type": "factoid",
+      "subject": "KienTrucMayTinh",
+      "topic": "Cache",
+      "query": "Bộ nhớ cache hoạt động theo nguyên lý nào?",
+      "reference": "Bộ nhớ cache được thiết kế để cải thiện thời gian truy cập bộ nhớ, dựa vào tính cục bộ của dữ liệu và lệnh lưu trữ trong bộ nhớ chính. Bộ nhớ cache có tốc độ cao nhưng dung lượng thấp hơn bộ nhớ chính, chứa bản sao của một phần bộ nhớ chính. Bộ nhớ chính được chia thành các khối (block) kích thước cố định K word, cache được chia thành các đường (line) mỗi đường có K word. Khi bộ xử lý muốn đọc một word, nó kiểm tra word đó có nằm trong cache không: nếu có (cache hit) thì word được gửi đến bộ vi xử lý, nếu không (cache miss) thì một khối từ bộ nhớ chính chứa word đó được đọc vào cache và sau đó word được gửi đến VXL.",
+      "source_file": "CH04-Cache.md",
+      "source_section": "4.2 Nguyên lý bộ nhớ cache",
+      "expected_best_mode": "naive",
+      "keywords": ["cache", "tính cục bộ", "block", "line", "cache hit", "cache miss", "word"]
+    },
+    {
+      "id": "ktmt-fact-03",
+      "type": "factoid",
+      "subject": "KienTrucMayTinh",
+      "topic": "ALU",
+      "query": "Đơn vị logic số học (ALU) là gì?",
+      "reference": "Đơn vị số học và logic (ALU - Arithmetic Logic Unit) là một phần của máy tính thực hiện các phép toán số học và logic trên dữ liệu. ALU nhận dữ liệu đầu vào từ các thanh ghi, thực hiện phép toán theo lệnh từ đơn vị điều khiển, đưa kết quả ra thanh ghi. ALU xử lý các phép cộng, trừ, nhân, chia trên số nguyên (có dấu và không dấu, biểu diễn bù 2), các phép logic và phép dịch. Quy ước biểu diễn số trong máy tính sử dụng biểu diễn dấu - độ lớn hoặc biểu diễn bù 2 cho số nguyên.",
+      "source_file": "CH09-ALU.md",
+      "source_section": "Đơn vị số học & logic (ALU)",
+      "expected_best_mode": "naive",
+      "keywords": ["ALU", "số học", "logic", "thanh ghi", "bù 2", "phép cộng", "phép nhân"]
+    },
+    {
+      "id": "ktmt-rel-01",
+      "type": "relational",
+      "subject": "KienTrucMayTinh",
+      "topic": "CPU-Memory",
+      "query": "Cách CPU truy xuất và thực thi lệnh từ bộ nhớ?",
+      "reference": "CPU truy xuất và thực thi lệnh theo chu kỳ lệnh gồm hai pha chính: chu kỳ truy xuất (fetch) và chu kỳ thực thi (execute). Trong chu kỳ truy xuất, CPU lấy lệnh từ bộ nhớ chính dựa vào địa chỉ trong thanh ghi PC (Program Counter), nạp vào thanh ghi lệnh IR (Instruction Register). Trong chu kỳ thực thi, CPU giải mã lệnh và thực hiện thao tác tương ứng. Quá trình lặp lại liên tục. Khi có ngắt, CPU xử lý ngắt sau khi hoàn thành lệnh hiện tại, lưu trạng thái và chuyển sang chương trình con xử lý ngắt. Chu kỳ lệnh có ngắt gồm các bước: fetch, execute, kiểm tra ngắt, xử lý ngắt nếu có.",
+      "source_file": "CH03-Chuc nang va ket noi.md",
+      "source_section": "3.2 Hoạt động của máy tính - Truy xuất và thực thi lệnh, Xử lý ngắt",
+      "expected_best_mode": "graph",
+      "keywords": ["CPU", "fetch", "execute", "chu kỳ lệnh", "PC", "IR", "ngắt", "interrupt"]
+    },
+    {
+      "id": "ktmt-rel-02",
+      "type": "relational",
+      "subject": "KienTrucMayTinh",
+      "topic": "Instruction-Addressing",
+      "query": "Liên hệ giữa tập lệnh và các chế độ định địa chỉ?",
+      "reference": "Tập lệnh quy định các thao tác CPU thực hiện, mỗi lệnh gồm mã thao tác và các toán hạng. Toán hạng có thể nằm ở: bộ nhớ chính/bộ nhớ ảo, thanh ghi CPU, thanh ghi I/O, hoặc lệnh trực tiếp. Các chế độ định địa chỉ cơ bản gồm: định địa chỉ tức thì (immediate), trực tiếp (direct), gián tiếp (indirect), thanh ghi (register), gián tiếp thanh ghi, định địa chỉ dịch chuyển (displacement: relative, base, indexed), định địa chỉ ngăn xếp (stack). Chế độ định địa chỉ phong phú giúp tập lệnh linh hoạt, cho phép biểu diễn các thao tác với dữ liệu ở nhiều vị trí và cách truy cập khác nhau, ảnh hưởng đến kích thước lệnh và độ phức tạp thực thi.",
+      "source_file": "CH10-Instruction set.md + CH11-Instruction set - addressing mode.md",
+      "source_section": "10.1 Đặc điểm tập lệnh + 11.1 Các chế độ định địa chỉ",
+      "expected_best_mode": "graph",
+      "keywords": ["tập lệnh", "định địa chỉ", "immediate", "direct", "indirect", "register", "displacement", "stack"]
+    },
+    {
+      "id": "ktmt-rel-03",
+      "type": "relational",
+      "subject": "KienTrucMayTinh",
+      "topic": "I/O",
+      "query": "Các phương thức trao đổi dữ liệu giữa CPU và thiết bị ngoại vi?",
+      "reference": "Có ba kỹ thuật vào/ra chính giữa CPU và thiết bị ngoại vi. I/O chương trình (programmed I/O): CPU chủ động kiểm tra trạng thái module I/O bằng cách hỏi vòng (polling) liên tục, đơn giản nhưng tốn thời gian CPU. I/O điều khiển ngắt (interrupt-driven I/O): module I/O chủ động gửi tín hiệu ngắt khi sẵn sàng, CPU dừng việc đang làm để xử lý ngắt, hiệu quả hơn polling. Truy cập bộ nhớ trực tiếp (DMA - Direct Memory Access): module DMA chuyển dữ liệu trực tiếp giữa thiết bị I/O và bộ nhớ chính không qua CPU, dùng cho truyền dữ liệu khối lượng lớn như đĩa cứng, card mạng.",
+      "source_file": "CH07-Input_Output.md",
+      "source_section": "7.3 Các kỹ thuật vào/ra",
+      "expected_best_mode": "graph",
+      "keywords": ["I/O", "polling", "interrupt", "ngắt", "DMA", "thiết bị ngoại vi", "module I/O"]
+    },
+    {
+      "id": "ktmt-broad-01",
+      "type": "broad",
+      "subject": "KienTrucMayTinh",
+      "topic": "Lịch sử máy tính",
+      "query": "Trình bày sơ lược lịch sử phát triển máy tính qua các thế hệ.",
+      "reference": "Lịch sử máy tính phát triển qua các thế hệ. Thế hệ đầu tiên có ENIAC (1946) và các máy Von Neumann như EDVAC, IAS computer với cấu trúc tập lệnh, các loại thanh ghi, hoạt động cơ bản. UNIVAC là máy tính thương mại đầu tiên, tiếp theo là IBM. Thế hệ thứ hai dùng transistor, đặc trưng là máy IBM 7094, dòng IBM 700/7000 Series. Thế hệ thứ ba dùng mạch tích hợp (IC), gồm sơ đồ gate và memory cell, IBM System/360 là đại diện. Sự phát triển của chip tuân theo quy luật Moore (1965, Gordon Moore - đồng sáng lập Intel): số transistor trên chip tăng gấp đôi mỗi 18-24 tháng, dẫn đến chi phí giảm và hiệu năng tăng theo thời gian.",
+      "source_file": "CH02-Computer_Evolution_and_Performance.md",
+      "source_section": "Sơ lược lịch sử phát triển máy tính",
+      "expected_best_mode": "mix",
+      "keywords": ["ENIAC", "Von Neumann", "IAS", "UNIVAC", "IBM", "transistor", "IC", "Moore", "System/360"]
+    },
+    {
+      "id": "ktmt-broad-02",
+      "type": "broad",
+      "subject": "KienTrucMayTinh",
+      "topic": "Bộ nhớ trong",
+      "query": "Trình bày các loại bộ nhớ bán dẫn trong máy tính.",
+      "reference": "Bộ nhớ bán dẫn gồm hai loại chính: RAM và ROM. RAM (Random Access Memory) gồm DRAM (Dynamic RAM) và SRAM (Static RAM). DRAM lưu trữ bằng tụ điện, cần làm tươi (refresh) định kỳ, dung lượng lớn, giá rẻ hơn, dùng cho bộ nhớ chính. SRAM dùng flip-flop, không cần làm tươi, tốc độ nhanh hơn DRAM, đắt hơn, dùng cho cache. ROM (Read Only Memory) gồm: PROM (Programmable ROM) - lập trình được một lần, EPROM - xóa bằng tia cực tím và lập trình lại, EEPROM - xóa và lập trình bằng điện, Flash Memory - một dạng EEPROM, được sử dụng rộng rãi trong USB, SSD. Tổ chức chip bộ nhớ có thể là một chiều hoặc đan xen (interleaved memory) để tăng tốc độ truy cập.",
+      "source_file": "CH05-Main memory.md",
+      "source_section": "5.1 Bộ nhớ bán dẫn",
+      "expected_best_mode": "mix",
+      "keywords": ["RAM", "ROM", "DRAM", "SRAM", "PROM", "EPROM", "EEPROM", "Flash", "refresh"]
+    },
+    {
+      "id": "ktmt-broad-03",
+      "type": "broad",
+      "subject": "KienTrucMayTinh",
+      "topic": "CPU",
+      "query": "Trình bày tổ chức bộ vi xử lý và các loại thanh ghi.",
+      "reference": "Tổ chức bộ vi xử lý (CPU) gồm các thành phần: đơn vị logic số học (ALU) thực hiện phép toán, đơn vị điều khiển (CU) giải mã lệnh và sinh tín hiệu điều khiển, các thanh ghi, bus nội bộ kết nối các thành phần. Thanh ghi chia thành hai loại: thanh ghi hiển thị với người dùng (user-visible registers) - lập trình viên có thể truy cập trực tiếp; và thanh ghi điều khiển và trạng thái (control and status registers) - dùng nội bộ. Bốn thanh ghi cần thiết để thực thi lệnh: PC (Program Counter) - chứa địa chỉ lệnh tiếp theo, IR (Instruction Register) - chứa lệnh đang thực thi, MAR (Memory Address Register), MBR (Memory Buffer Register). Thanh ghi PSW (Program Status Word) chứa thông tin trạng thái chương trình. CPU hoạt động theo chu kỳ lệnh fetch-decode-execute lặp lại, kèm pipeline để tăng hiệu năng.",
+      "source_file": "CH12-CPU.md",
+      "source_section": "12.1 Tổ chức bộ vi xử lý + 12.2 Tổ chức thanh ghi",
+      "expected_best_mode": "mix",
+      "keywords": ["CPU", "ALU", "Control Unit", "thanh ghi", "PC", "IR", "MAR", "MBR", "PSW", "pipeline"]
+    },
+    {
+      "id": "ktmt-agg-01",
+      "type": "aggregate",
+      "subject": "KienTrucMayTinh",
+      "topic": "Storage RAID",
+      "query": "Trình bày các mức RAID 0, 1, 2 và đặc điểm của đĩa từ.",
+      "reference": "Đĩa từ là thiết bị lưu trữ ngoài dùng đầu đọc/ghi từ trên các tấm platter quay. Đặc tính vật lý đĩa gồm tấm platter, chuyển động đầu, tính di động, đĩa hai mặt, ba loại đầu đọc/ghi tương ứng ba loại đĩa. Tham số hiệu năng đĩa cứng gồm thời gian seek, latency, thời gian truyền I/O. RAID (Redundant Array of Independent Disks) tăng hiệu năng và độ tin cậy bằng cách kết hợp nhiều đĩa. RAID Level 0 chia dữ liệu thành các stripe trên nhiều đĩa, cho dung lượng truyền dữ liệu cao và tốc độ yêu cầu I/O cao, không có dự phòng nên không có khả năng phục hồi khi hỏng đĩa. RAID Level 1 nhân đôi (mirror) dữ liệu trên hai đĩa, độ tin cậy cao nhưng tốn dung lượng. RAID Level 2 dùng mã sửa lỗi Hamming trên các đĩa, hiếm dùng trong thực tế.",
+      "source_file": "CH06-Storage.md",
+      "source_section": "6.1 Đĩa từ + 6.2 RAID",
+      "expected_best_mode": "mix",
+      "keywords": ["đĩa từ", "platter", "RAID 0", "RAID 1", "RAID 2", "stripe", "mirror", "Hamming"]
+    },
+    {
+      "id": "ktmt-agg-02",
+      "type": "aggregate",
+      "subject": "KienTrucMayTinh",
+      "topic": "Pipeline Hazard",
+      "query": "Trình bày các loại xung đột (hazard) trong kỹ thuật đường ống (pipeline) lệnh.",
+      "reference": "Kỹ thuật đường ống (pipeline) chia chu kỳ lệnh thành nhiều giai đoạn, xử lý đồng thời nhiều lệnh ở các giai đoạn khác nhau để tăng hiệu năng. Tuy nhiên pipeline gặp xung đột (hazard) làm giảm hiệu quả. Xung đột tài nguyên (structural hazard) xảy ra khi hai lệnh cần cùng một tài nguyên tại cùng thời điểm. Xung đột dữ liệu (data hazard) xảy ra khi lệnh sau cần kết quả của lệnh trước chưa hoàn thành - có nhiều loại data hazard tùy thứ tự đọc/ghi (RAW, WAR, WAW). Xung đột điều khiển (control hazard) xảy ra với lệnh rẽ nhánh, do không biết nhánh nào sẽ được chọn nên các lệnh trong pipeline có thể phải bỏ. Các giải pháp gồm forwarding, branch prediction, stall, flush pipeline.",
+      "source_file": "CH12-CPU.md",
+      "source_section": "12.3 Chu kỳ lệnh - Pipelining - Xung đột (Hazard)",
+      "expected_best_mode": "mix",
+      "keywords": ["pipeline", "hazard", "xung đột", "tài nguyên", "dữ liệu", "điều khiển", "branch", "forwarding"]
+    },
+
+    {
+      "id": "web-fact-01",
+      "type": "factoid",
+      "subject": "CNWeeb",
+      "topic": "Form",
+      "query": "Form trong ứng dụng web là gì và có vai trò ra sao?",
+      "reference": "Form là thành phần không thể thiếu trong các ứng dụng Web vì form là nơi trao đổi và thu thập dữ liệu từ người dùng. Form có 2 loại chính: form lấy thông tin dưới dạng căn bản, và form lấy thông tin dưới dạng các file được upload lên. Có thể không sử dụng form để lấy thông tin từ người dùng bằng kỹ thuật Ajax. Hai phương thức thường được sử dụng khi gửi dữ liệu từ form là GET và POST. Server phân biệt data gửi lên dựa vào thuộc tính name của các thẻ input form. Cú pháp khai báo form: <form action='url-xử-lý' method='tên-method'> các-thẻ-input </form>.",
+      "source_file": "5-CNWeb-PHP-Form.md",
+      "source_section": "Khái niệm Form & Khai báo Form",
+      "expected_best_mode": "naive",
+      "keywords": ["form", "thu thập dữ liệu", "GET", "POST", "action", "method", "Ajax", "input"]
+    },
+    {
+      "id": "web-fact-02",
+      "type": "factoid",
+      "subject": "CNWeeb",
+      "topic": "Laravel",
+      "query": "Laravel là gì và có những đặc điểm chính nào?",
+      "reference": "Laravel là framework mã nguồn mở, hoạt động theo mô hình MVC. Laravel được sử dụng phổ biến nhất trong các framework hiện tại. Trang chủ: https://laravel.com. Laravel được cài đặt thông qua Composer - công cụ quản lý việc cài đặt, update tự động các thư viện code của bên thứ ba. Hai cách cài đặt Laravel sử dụng Composer: chạy lệnh 'composer global require laravel/installer' rồi 'laravel new <tên>', hoặc 'composer create-project --prefer-dist laravel/laravel <tên>'. File môi trường .env chứa các thông tin cấu hình hệ thống và database.",
+      "source_file": "8-CNWeb-PHP-Laravel.md",
+      "source_section": "Laravel là gì + Khái niệm Composer + Cài đặt",
+      "expected_best_mode": "naive",
+      "keywords": ["Laravel", "framework", "MVC", "Composer", ".env", "mã nguồn mở"]
+    },
+    {
+      "id": "web-rel-01",
+      "type": "relational",
+      "subject": "CNWeeb",
+      "topic": "MVC-Routing-Controller",
+      "query": "Trong Laravel, Route và Controller liên hệ với nhau thế nào?",
+      "reference": "Trong Laravel, mọi URL đều phải thông qua cơ chế Routing. Các route nằm tại routes/web.php. Route có thể có tham số hoặc không, ví dụ Route::get('demo-page', function() { return view('demo-page'); }) hoặc Route::get('/home', 'HomeController@index') - cú pháp gắn route với phương thức của Controller. Controller nằm tại app/Http/Controllers, tạo bằng lệnh 'php artisan make:controller <tên-controller>'. Có thể tạo controller với các phương thức CRUD chuẩn bằng cờ --resource. Middleware đóng vai trò như firewall lọc request gửi tới và response trả về - có thể dùng middleware khi tạo route hoặc tại hàm khởi tạo controller, ví dụ ->middleware('first').",
+      "source_file": "8-CNWeb-PHP-Laravel.md",
+      "source_section": "Routing + Middleware + Controller",
+      "expected_best_mode": "graph",
+      "keywords": ["Route", "Controller", "Routing", "Middleware", "artisan", "web.php", "CRUD"]
+    },
+    {
+      "id": "web-broad-01",
+      "type": "broad",
+      "subject": "CNWeeb",
+      "topic": "MVC",
+      "query": "Trình bày kiến trúc MVC và luồng xử lý dữ liệu.",
+      "reference": "MVC là mô hình kiến trúc phần mềm 3 lớp bao gồm Model, View, Controller. MVC tách biệt ứng dụng web ra làm các thành phần riêng biệt, thuận lợi cho việc phát triển và bảo trì. MVC phổ biến trong các framework hiện nay (Laravel, Zend, Cake) và sử dụng OOP làm nền tảng. Model nhận dữ liệu từ Controller gửi tới, thực hiện thao tác với database, gửi kết quả trả về Controller. View hiển thị dữ liệu từ Controller gửi về cho trình duyệt tại client. Controller là tầng trung gian nhận request từ client, gọi Model thực thi, trả dữ liệu lại cho client thông qua View. Ví dụ luồng xử lý: Client truy cập link → Controller nhận request → Controller gọi Model truy vấn database → Model gửi kết quả về Controller → Controller gửi nội dung ra View → View hiển thị tới client.",
+      "source_file": "7-CNWeb-PHP-MVC.md",
+      "source_section": "Khái niệm + Thành phần + Luồng xử lý dữ liệu",
+      "expected_best_mode": "mix",
+      "keywords": ["MVC", "Model", "View", "Controller", "OOP", "luồng xử lý", "database", "client"]
+    },
+    {
+      "id": "web-broad-02",
+      "type": "broad",
+      "subject": "CNWeeb",
+      "topic": "Laravel Database",
+      "query": "Trình bày các cơ chế truy vấn database trong Laravel.",
+      "reference": "Laravel cung cấp 2 cơ chế thao tác với Database. QueryBuilder gần với truy vấn thô, tốc độ nhanh hơn, sử dụng class facade DB theo hướng PHP thuần. Eloquent ORM có cách viết đẹp và rõ ràng hơn, có tính bảo mật cao hơn, sử dụng Model theo hướng MVC. Tạo model bằng artisan: 'php artisan make:model <tên-model>'. Các thao tác cơ bản: lấy tất cả bản ghi - DB::table('news')->get() hoặc News::all(); lấy 1 bản ghi theo id - DB::table('news')->where('id',1)->first() hoặc News::find(1); insert - DB::table()->insert([...]) hoặc tạo instance News mới rồi gọi ->save(); update - News::find(1)->save() sau khi sửa; delete - News::find(1)->delete(). Hàm count và max: News::count(), News::max('id').",
+      "source_file": "8-CNWeb-PHP-Laravel.md",
+      "source_section": "Làm việc với Database + Truy vấn QueryBuilder-Eloquent",
+      "expected_best_mode": "mix",
+      "keywords": ["QueryBuilder", "Eloquent", "ORM", "Model", "artisan", "DB::table", "save", "find"]
+    },
+    {
+      "id": "web-agg-01",
+      "type": "aggregate",
+      "subject": "CNWeeb",
+      "topic": "GET-POST",
+      "query": "So sánh phương thức GET và POST trong PHP Form.",
+      "reference": "Phương thức GET gửi dữ liệu thông qua URL trên trình duyệt với format <URL>?param1=value1&param2=value2, ví dụ http://google.com.vn?name=Anh&age=18. GET thường sử dụng cho truy vấn lấy dữ liệu từ server, giới hạn độ dài chuỗi dữ liệu trên URL là 1024 ký tự. PHP sử dụng biến $_GET lưu trữ toàn bộ dữ liệu gửi lên qua GET. Không nên sử dụng GET để gửi các thông tin nhạy cảm như password. Phương thức POST có tính bảo mật hơn GET, dữ liệu truyền đi không hiển thị trên trình duyệt, thường sử dụng cho các truy vấn thay đổi dữ liệu trong database (INSERT, UPDATE, DELETE), không giới hạn độ dài như GET, sử dụng biến $_POST. Biến $_REQUEST có thể lấy dữ liệu từ cả 2 phương thức GET và POST.",
+      "source_file": "5-CNWeb-PHP-Form.md",
+      "source_section": "Phương thức GET + Phương thức POST + Biến $_REQUEST",
+      "expected_best_mode": "mix",
+      "keywords": ["GET", "POST", "$_GET", "$_POST", "$_REQUEST", "URL", "bảo mật", "1024 ký tự"]
+    }
+  ]
+}

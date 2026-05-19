@@ -26,7 +26,6 @@ from lightrag.utils import (
     sanitize_text_for_encoding,
 )
 from lightrag.api.utils_api import get_combined_auth_dependency
-from lightrag.notebook_ingest import notebook_ingest_pdf
 from ..config import global_args
 
 
@@ -81,6 +80,9 @@ def _schedule_upload_ingest(
     rag: LightRAG, file_path: Path, track_id: str | None = None
 ) -> None:
     """Decouple PDF ingest from request lifecycle to keep the API responsive."""
+    # Import lazily to avoid pulling heavy docling/sentence-transformers
+    # dependencies into server startup.
+    from lightrag.notebook_ingest import notebook_ingest_pdf
 
     task = asyncio.create_task(notebook_ingest_pdf(rag, file_path, track_id=track_id))
     _upload_ingest_tasks.add(task)
@@ -3275,20 +3277,24 @@ def create_document_routes(
             HTTPException: If an error occurs while retrieving documents (500).
         """
         try:
-            # Get paginated documents and status counts in parallel
-            docs_task = rag.doc_status.get_docs_paginated(
+            # Keep the core document list query mandatory.
+            # Ancillary counts are fetched best-effort so a slow PG round-trip
+            # does not block the entire WebUI document screen.
+            documents_with_ids, total_count = await rag.doc_status.get_docs_paginated(
                 status_filter=request.status_filter,
                 page=request.page,
                 page_size=request.page_size,
                 sort_field=request.sort_field,
                 sort_direction=request.sort_direction,
             )
-            status_counts_task = rag.doc_status.get_all_status_counts()
-
-            # Execute both queries in parallel
-            (documents_with_ids, total_count), status_counts = await asyncio.gather(
-                docs_task, status_counts_task
-            )
+            status_counts = {}
+            try:
+                status_counts = await asyncio.wait_for(
+                    rag.doc_status.get_all_status_counts(),
+                    timeout=2.0,
+                )
+            except Exception as status_err:
+                logger.warning(f"Status count aggregation skipped: {status_err}")
 
             # Batch fetch entity/relation counts per doc.
             doc_ids = [d_id for d_id, _ in documents_with_ids]
@@ -3296,8 +3302,13 @@ def create_document_routes(
             relation_count_map: dict[str, int] = {}
             if doc_ids:
                 try:
-                    ent_rows = await rag.full_entities.get_by_ids(doc_ids)
-                    rel_rows = await rag.full_relations.get_by_ids(doc_ids)
+                    ent_rows, rel_rows = await asyncio.wait_for(
+                        asyncio.gather(
+                            rag.full_entities.get_by_ids(doc_ids),
+                            rag.full_relations.get_by_ids(doc_ids),
+                        ),
+                        timeout=2.0,
+                    )
                     for d_id, row in zip(doc_ids, ent_rows):
                         if row:
                             entity_count_map[d_id] = int(row.get("count", 0) or 0)

@@ -247,6 +247,7 @@ def parse_args() -> argparse.Namespace:
             "aws_bedrock",
             "jina",
             "gemini",
+            "huggingface",
         ],
         help="Embedding binding type (default: from env or ollama)",
     )
@@ -357,6 +358,7 @@ def parse_args() -> argparse.Namespace:
 
     # Inject model configuration
     args.llm_model = get_env_value("LLM_MODEL", "mistral-nemo:latest")
+    args.llm_model_extract = get_env_value("LLM_MODEL_EXTRACT", None, special_none=True)
     # EMBEDDING_MODEL defaults to None - each binding will use its own default model
     # e.g., OpenAI uses "text-embedding-3-small", Jina uses "jina-embeddings-v4"
     args.embedding_model = get_env_value("EMBEDDING_MODEL", None, special_none=True)

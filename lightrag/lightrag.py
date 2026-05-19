@@ -321,6 +321,9 @@ class LightRAG:
     llm_model_func: Callable[..., object] | None = field(default=None)
     """Function for interacting with the large language model (LLM). Must be set before use."""
 
+    llm_model_extract_func: Callable[..., object] | None = field(default=None)
+    """Optional separate LLM function for entity extraction. Falls back to llm_model_func if None."""
+
     llm_model_name: str = field(default="gpt-4o-mini")
     """Name of the LLM model used for generating responses."""
 
@@ -672,6 +675,22 @@ class LightRAG:
                 **self.llm_model_kwargs,
             )
         )
+
+        # Wrap extract model func if provided, otherwise alias to llm_model_func
+        if self.llm_model_extract_func is not None:
+            self.llm_model_extract_func = priority_limit_async_func_call(
+                self.llm_model_max_async,
+                llm_timeout=self.default_llm_timeout,
+                queue_name="LLM extract func",
+            )(
+                partial(
+                    self.llm_model_extract_func,  # type: ignore
+                    hashing_kv=hashing_kv,
+                    **self.llm_model_kwargs,
+                )
+            )
+        else:
+            self.llm_model_extract_func = self.llm_model_func
 
         self._storages_status = StoragesStatus.CREATED
 
@@ -1099,15 +1118,19 @@ class LightRAG:
         # Direct imports for default storage implementations
         if storage_name == "JsonKVStorage":
             from lightrag.kg.json_kv_impl import JsonKVStorage
+
             return JsonKVStorage
         elif storage_name == "NanoVectorDBStorage":
             from lightrag.kg.nano_vector_db_impl import NanoVectorDBStorage
+
             return NanoVectorDBStorage
         elif storage_name == "NetworkXStorage":
             from lightrag.kg.networkx_impl import NetworkXStorage
+
             return NetworkXStorage
         elif storage_name == "JsonDocStatusStorage":
             from lightrag.kg.json_doc_status_impl import JsonDocStatusStorage
+
             return JsonDocStatusStorage
         else:
             # Fallback to dynamic import for other storage implementations
@@ -1251,7 +1274,9 @@ class LightRAG:
 
             doc_ids = set(inserting_chunks.keys())
             add_chunk_keys = await self.text_chunks.filter_keys(doc_ids)
-            inserting_chunks = { k: v for k, v in inserting_chunks.items() if k in add_chunk_keys }
+            inserting_chunks = {
+                k: v for k, v in inserting_chunks.items() if k in add_chunk_keys
+            }
             if not len(inserting_chunks):
                 logger.warning("All chunks are already in the storage.")
                 return
@@ -2368,9 +2393,9 @@ class LightRAG:
                     "source_id": source_id,
                     "tokens": tokens,
                     "chunk_order_index": chunk_order_index,
-                    "full_doc_id": full_doc_id
-                    if full_doc_id is not None
-                    else source_id,
+                    "full_doc_id": (
+                        full_doc_id if full_doc_id is not None else source_id
+                    ),
                     "file_path": file_path,
                     "status": DocStatus.PROCESSED,
                 }
@@ -2728,7 +2753,7 @@ class LightRAG:
 
         query_result = None
 
-        if data_param.mode in ["local", "global", "hybrid", "mix", "stat"]:
+        if data_param.mode in ["local", "global", "hybrid", "mix", "stat", "graph"]:
             logger.debug(f"[aquery_data] Using kg_query for mode: {data_param.mode}")
             query_result = await kg_query(
                 query.strip(),
@@ -2828,7 +2853,7 @@ class LightRAG:
         try:
             query_result = None
 
-            if param.mode in ["local", "global", "hybrid", "mix", "stat"]:
+            if param.mode in ["local", "global", "hybrid", "mix", "stat", "graph"]:
                 query_result = await kg_query(
                     query.strip(),
                     self.chunk_entity_relation_graph,
@@ -2915,12 +2940,14 @@ class LightRAG:
             # Extract structured data from query result
             raw_data = query_result.raw_data or {}
             raw_data["llm_response"] = {
-                "content": query_result.content
-                if not query_result.is_streaming
-                else None,
-                "response_iterator": query_result.response_iterator
-                if query_result.is_streaming
-                else None,
+                "content": (
+                    query_result.content if not query_result.is_streaming else None
+                ),
+                "response_iterator": (
+                    query_result.response_iterator
+                    if query_result.is_streaming
+                    else None
+                ),
                 "is_streaming": query_result.is_streaming,
             }
 

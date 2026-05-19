@@ -1,0 +1,701 @@
+{
+  "faithfulness": {
+    "scores": [
+      {
+        "entry_idx": 0,
+        "score": 0.8571428571428571,
+        "reason": null
+      },
+      {
+        "entry_idx": 1,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 2,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 3,
+        "score": 0.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 4,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 5,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 6,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 7,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 8,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 9,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 10,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 11,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 12,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 13,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 14,
+        "score": 0.7777777777777778,
+        "reason": null
+      },
+      {
+        "entry_idx": 15,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 16,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 17,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 18,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 19,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 20,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 21,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 22,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 23,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 24,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 25,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 26,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 27,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 28,
+        "score": 0.75,
+        "reason": null
+      },
+      {
+        "entry_idx": 29,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 30,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 31,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 32,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 33,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 34,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 35,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 36,
+        "score": 0.4,
+        "reason": null
+      },
+      {
+        "entry_idx": 37,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 38,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 39,
+        "score": 0.8,
+        "reason": null
+      },
+      {
+        "entry_idx": 40,
+        "score": 0.3333333333333333,
+        "reason": null
+      },
+      {
+        "entry_idx": 41,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 42,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 43,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 44,
+        "score": 0.6923076923076923,
+        "reason": null
+      },
+      {
+        "entry_idx": 45,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 46,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 47,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 48,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 49,
+        "score": 0.875,
+        "reason": null
+      },
+      {
+        "entry_idx": 50,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 51,
+        "score": 0.8333333333333334,
+        "reason": null
+      },
+      {
+        "entry_idx": 52,
+        "score": 0.17647058823529413,
+        "reason": null
+      },
+      {
+        "entry_idx": 53,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 54,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 55,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 56,
+        "score": 0.8,
+        "reason": null
+      },
+      {
+        "entry_idx": 57,
+        "score": 0.7272727272727273,
+        "reason": null
+      },
+      {
+        "entry_idx": 58,
+        "score": 0.75,
+        "reason": null
+      },
+      {
+        "entry_idx": 59,
+        "score": 0.6666666666666666,
+        "reason": null
+      },
+      {
+        "entry_idx": 60,
+        "score": 0.25,
+        "reason": null
+      },
+      {
+        "entry_idx": 61,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 62,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 63,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 64,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 65,
+        "score": 0.8333333333333334,
+        "reason": null
+      },
+      {
+        "entry_idx": 66,
+        "score": 0.8,
+        "reason": null
+      },
+      {
+        "entry_idx": 67,
+        "score": 0.8,
+        "reason": null
+      },
+      {
+        "entry_idx": 68,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 69,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 70,
+        "score": 0.6666666666666666,
+        "reason": null
+      },
+      {
+        "entry_idx": 71,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 72,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 73,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 74,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 75,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 76,
+        "score": 0.8461538461538461,
+        "reason": null
+      },
+      {
+        "entry_idx": 77,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 78,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 79,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 80,
+        "score": 0.6666666666666666,
+        "reason": null,
+        "judge_model": "gh/gpt-4o-mini"
+      },
+      {
+        "entry_idx": 81,
+        "score": 0.875,
+        "reason": null,
+        "judge_model": "gh/gpt-4o-mini"
+      },
+      {
+        "entry_idx": 82,
+        "score": NaN,
+        "reason": null,
+        "judge_model": "gh/gpt-4o-mini"
+      },
+      {
+        "entry_idx": 83,
+        "score": 1.0,
+        "reason": null,
+        "judge_model": "gh/gpt-4o-mini"
+      },
+      {
+        "entry_idx": 84,
+        "score": 0.7333333333333333,
+        "reason": null,
+        "judge_model": "gh/gpt-4o-mini"
+      },
+      {
+        "entry_idx": 85,
+        "score": 0.8823529411764706,
+        "reason": null,
+        "judge_model": "gh/gpt-4o-mini"
+      },
+      {
+        "entry_idx": 86,
+        "score": 0.9090909090909091,
+        "reason": null,
+        "judge_model": "gh/gpt-4o-mini"
+      },
+      {
+        "entry_idx": 87,
+        "score": 0.9333333333333333,
+        "reason": null,
+        "judge_model": "gh/gpt-4o-mini"
+      },
+      {
+        "entry_idx": 88,
+        "score": 1.0,
+        "reason": null,
+        "judge_model": "gh/gpt-4o-mini"
+      },
+      {
+        "entry_idx": 89,
+        "score": 1.0,
+        "reason": null,
+        "judge_model": "gh/gpt-4o-mini"
+      },
+      {
+        "entry_idx": 90,
+        "score": 0.7142857142857143,
+        "reason": null,
+        "judge_model": "gh/gpt-4o-mini"
+      },
+      {
+        "entry_idx": 91,
+        "score": 0.6153846153846154,
+        "reason": null,
+        "judge_model": "gh/gpt-4o-mini"
+      },
+      {
+        "entry_idx": 92,
+        "score": 0.7,
+        "reason": null,
+        "judge_model": "gh/gpt-4o-mini"
+      },
+      {
+        "entry_idx": 93,
+        "score": 1.0,
+        "reason": null,
+        "judge_model": "gh/gpt-4o-mini"
+      },
+      {
+        "entry_idx": 94,
+        "score": 1.0,
+        "reason": null,
+        "judge_model": "gh/gpt-4o-mini"
+      },
+      {
+        "entry_idx": 95,
+        "score": 0.9,
+        "reason": null,
+        "judge_model": "gh/gpt-4o-mini"
+      },
+      {
+        "entry_idx": 96,
+        "score": 0.5454545454545454,
+        "reason": null,
+        "judge_model": "gh/gpt-4o-mini"
+      },
+      {
+        "entry_idx": 97,
+        "score": 1.0,
+        "reason": null,
+        "judge_model": "gh/gpt-4o-mini"
+      },
+      {
+        "entry_idx": 98,
+        "score": 0.5833333333333334,
+        "reason": null,
+        "judge_model": "gh/gpt-4o-mini"
+      },
+      {
+        "entry_idx": 99,
+        "score": 0.7058823529411765,
+        "reason": null,
+        "judge_model": "gh/gpt-4o-mini"
+      },
+      {
+        "entry_idx": 100,
+        "score": 0.0,
+        "reason": null,
+        "judge_model": "gh/gpt-4o-mini"
+      },
+      {
+        "entry_idx": 101,
+        "score": 1.0,
+        "reason": null,
+        "judge_model": "gh/gpt-4o-mini"
+      },
+      {
+        "entry_idx": 102,
+        "score": 0.5,
+        "reason": null,
+        "judge_model": "gh/gpt-4o-mini"
+      },
+      {
+        "entry_idx": 103,
+        "score": 0.9090909090909091,
+        "reason": null,
+        "judge_model": "gh/gpt-4o-mini"
+      },
+      {
+        "entry_idx": 104,
+        "score": 1.0,
+        "reason": null,
+        "judge_model": "gh/gpt-4o-mini"
+      },
+      {
+        "entry_idx": 105,
+        "score": 1.0,
+        "reason": null,
+        "judge_model": "gh/gpt-4o-mini"
+      },
+      {
+        "entry_idx": 106,
+        "score": 1.0,
+        "reason": null,
+        "judge_model": "gh/gpt-4o-mini"
+      },
+      {
+        "entry_idx": 107,
+        "score": 1.0,
+        "reason": null,
+        "judge_model": "gh/gpt-4o-mini"
+      },
+      {
+        "entry_idx": 108,
+        "score": 0.7777777777777778,
+        "reason": null,
+        "judge_model": "gh/gpt-4o-mini"
+      },
+      {
+        "entry_idx": 109,
+        "score": 0.7142857142857143,
+        "reason": null,
+        "judge_model": "gh/gpt-4o-mini"
+      },
+      {
+        "entry_idx": 110,
+        "score": 1.0,
+        "reason": null,
+        "judge_model": "gh/gpt-4o-mini"
+      },
+      {
+        "entry_idx": 111,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 112,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 113,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 114,
+        "score": 0.5882352941176471,
+        "reason": null
+      },
+      {
+        "entry_idx": 115,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 116,
+        "score": 0.875,
+        "reason": null
+      },
+      {
+        "entry_idx": 117,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 118,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 119,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 120,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 121,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 122,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 123,
+        "score": 1.0,
+        "reason": null
+      },
+      {
+        "entry_idx": 124,
+        "score": 0.9523809523809523,
+        "reason": null
+      }
+    ],
+    "aggregate": {
+      "by_mode": {
+        "bm25": 0.9453968253968255,
+        "naive": 0.9562897886427298,
+        "hybrid": NaN,
+        "mix": 0.9265476484300014,
+        "graph": 0.7399551494257376
+      },
+      "by_type_mode": {
+        "factoid": {
+          "bm25": 0.9795918367346939,
+          "naive": 0.9372294372294372,
+          "hybrid": 0.8642857142857142,
+          "mix": 0.9108225108225109,
+          "graph": 0.8253968253968254
+        },
+        "relational": {
+          "bm25": 0.8333333333333334,
+          "naive": 0.9523809523809524,
+          "hybrid": 0.9444444444444445,
+          "mix": 0.9666666666666667,
+          "graph": 0.7076923076923077
+        },
+        "broad": {
+          "bm25": 0.9682539682539683,
+          "naive": 0.9653361344537815,
+          "hybrid": NaN,
+          "mix": 0.9355311355311355,
+          "graph": 0.8572344322344322
+        },
+        "aggregate": {
+          "bm25": 1.0,
+          "naive": 0.975,
+          "hybrid": 0.9166666666666666,
+          "mix": 0.887843137254902,
+          "graph": 0.4948612172141583
+        }
+      }
+    }
+  }
+}

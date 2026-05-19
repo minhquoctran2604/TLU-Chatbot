@@ -1,4 +1,4 @@
-"""LLM-as-judge eval for RAG faithfulness + relevancy.
+~"""LLM-as-judge eval for RAG faithfulness + relevancy.
 
 Tests 2 modes (naive, hybrid). Skip stat (programmatic match).
 For each query × mode:

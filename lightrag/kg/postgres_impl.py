@@ -2232,9 +2232,9 @@ class PGKVStorage(BaseKVStorage):
                     "cache_type": v.get(
                         "cache_type", "extract"
                     ),  # Get cache_type from data
-                    "queryparam": json.dumps(v.get("queryparam"))
-                    if v.get("queryparam")
-                    else None,
+                    "queryparam": (
+                        json.dumps(v.get("queryparam")) if v.get("queryparam") else None
+                    ),
                 }
 
                 await self.db.execute(upsert_sql, _data)
@@ -3036,6 +3036,49 @@ class PGVectorStorage(BaseVectorStorage):
         }
         results = await self.db.query(sql, params=list(params.values()), multirows=True)
         return results
+
+    async def query_local_relations(
+        self,
+        query: str,
+        top_k: int,
+        filter_pairs: list[tuple[str, str]],
+        query_embedding: list[float] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Local-first vector query restricted to specific (src, tgt) pairs.
+
+        Used by graph mode to rank edges within ego subgraph only,
+        avoiding global top-K cut that drops relevant local edges.
+        """
+        if not filter_pairs or self.namespace != NameSpace.VECTOR_STORE_RELATIONSHIPS:
+            return []
+
+        if query_embedding is not None:
+            embedding = query_embedding
+        else:
+            embeddings = await self.embedding_func([query], _priority=5)
+            embedding = embeddings[0]
+
+        embedding_string = ",".join(map(str, embedding))
+
+        # Build composite keys (src||SEP||tgt). PG = ANY(text[]) handles large lists.
+        SEP = "<<<>>>"
+        pair_keys = [f"{s}{SEP}{t}" for s, t in filter_pairs]
+
+        sql = f"""
+            SELECT r.source_id AS src_id,
+                   r.target_id AS tgt_id,
+                   EXTRACT(EPOCH FROM r.create_time)::BIGINT AS created_at,
+                   1.0 - (r.content_vector <=> '[{embedding_string}]'::vector) AS distance
+            FROM {self.table_name} r
+            WHERE r.workspace = $1
+              AND (r.source_id || '{SEP}' || r.target_id) = ANY($2::text[])
+            ORDER BY r.content_vector <=> '[{embedding_string}]'::vector
+            LIMIT $3;
+        """
+        results = await self.db.query(
+            sql, params=[self.workspace, pair_keys, top_k], multirows=True
+        )
+        return results or []
 
     async def index_done_callback(self) -> None:
         # PG handles persistence automatically
@@ -5744,7 +5787,8 @@ SQL_TEMPLATES = {
     "relationships": """
                      SELECT r.source_id AS src_id,
                             r.target_id AS tgt_id,
-                            EXTRACT(EPOCH FROM r.create_time)::BIGINT AS created_at
+                            EXTRACT(EPOCH FROM r.create_time)::BIGINT AS created_at,
+                            1.0 - (r.content_vector <=> '[{embedding_string}]'::vector) AS distance
                      FROM {table_name} r
                      WHERE r.workspace = $1
                        AND r.content_vector <=> '[{embedding_string}]'::vector < $2
@@ -5753,7 +5797,8 @@ SQL_TEMPLATES = {
                      """,
     "entities": """
                 SELECT e.entity_name,
-                       EXTRACT(EPOCH FROM e.create_time)::BIGINT AS created_at
+                       EXTRACT(EPOCH FROM e.create_time)::BIGINT AS created_at,
+                       1.0 - (e.content_vector <=> '[{embedding_string}]'::vector) AS distance
                 FROM {table_name} e
                 WHERE e.workspace = $1
                   AND e.content_vector <=> '[{embedding_string}]'::vector < $2
@@ -5764,7 +5809,8 @@ SQL_TEMPLATES = {
               SELECT c.id,
                      c.content,
                      c.file_path,
-                     EXTRACT(EPOCH FROM c.create_time)::BIGINT AS created_at
+                     EXTRACT(EPOCH FROM c.create_time)::BIGINT AS created_at,
+                     1.0 - (c.content_vector <=> '[{embedding_string}]'::vector) AS distance
               FROM {table_name} c
               WHERE c.workspace = $1
                 AND c.content_vector <=> '[{embedding_string}]'::vector < $2

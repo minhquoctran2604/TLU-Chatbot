@@ -85,13 +85,13 @@ T = TypeVar("T")
 class QueryParam:
     """Configuration parameters for query execution in LightRAG."""
 
-    mode: Literal["local", "global", "hybrid", "naive", "mix", "bypass", "stat"] = "naive"
+    mode: Literal["hybrid", "naive", "mix", "stat", "graph"] = "naive"
     """Specifies the retrieval mode:
-    - "local": Focuses on context-dependent information.
-    - "global": Utilizes global knowledge.
     - "hybrid": Combines local and global retrieval methods.
     - "naive": Performs a basic search without advanced techniques.
     - "mix": Integrates knowledge graph and vector retrieval.
+    - "stat": Routes to Neo4j Text2Cypher for biblio aggregate queries.
+    - "graph": Topology-anchored ego walk on content graph with hl-keyword edge filter.
     """
 
     only_need_context: bool = False

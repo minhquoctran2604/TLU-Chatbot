@@ -1,0 +1,68 @@
+{
+  "version": "v2",
+  "timestamp": "2026-05-19T15:29:55.036217",
+  "total_docs": 12,
+  "total_chunks": 636,
+  "docs": [
+    {
+      "file_path": "5. Chu de Mot số vấn đê nghien cuu.pdf",
+      "chunks_count": 106,
+      "content_length": 49199
+    },
+    {
+      "file_path": "2-CSS.pdf",
+      "chunks_count": 78,
+      "content_length": 30017
+    },
+    {
+      "file_path": "5-Jquery.pdf",
+      "chunks_count": 72,
+      "content_length": 73338
+    },
+    {
+      "file_path": "C1_HTML.pdf",
+      "chunks_count": 62,
+      "content_length": 23430
+    },
+    {
+      "file_path": "2. Chu de TTNT.pdf",
+      "chunks_count": 56,
+      "content_length": 32372
+    },
+    {
+      "file_path": "4. Chu de các VĐ CSDL.pdf",
+      "chunks_count": 48,
+      "content_length": 26420
+    },
+    {
+      "file_path": "3_JavaScript.pdf",
+      "chunks_count": 46,
+      "content_length": 15983
+    },
+    {
+      "file_path": "3. Chu de HTTT.pdf",
+      "chunks_count": 41,
+      "content_length": 22725
+    },
+    {
+      "file_path": "2. Yêu cầu.pdf",
+      "chunks_count": 37,
+      "content_length": 14259
+    },
+    {
+      "file_path": "1-PTTKHTTT-Overview.pdf",
+      "chunks_count": 37,
+      "content_length": 20915
+    },
+    {
+      "file_path": "1. Tong quan ve he thong thong minh.pdf",
+      "chunks_count": 31,
+      "content_length": 18445
+    },
+    {
+      "file_path": "3.UML.pdf",
+      "chunks_count": 22,
+      "content_length": 11457
+    }
+  ]
+}

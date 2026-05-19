@@ -8,28 +8,38 @@ PROMPTS: dict[str, Any] = {}
 PROMPTS["DEFAULT_TUPLE_DELIMITER"] = "<|#|>"
 PROMPTS["DEFAULT_COMPLETION_DELIMITER"] = "<|COMPLETE|>"
 
-PROMPTS["entity_extraction_system_prompt"] = """---Role---
+PROMPTS[
+    "entity_extraction_system_prompt"
+] = """---Role---
 You are a Knowledge Graph Specialist responsible for extracting entities and relationships from the input text.
 
 ---Instructions---
 1.  **Entity Extraction & Output:**
     *   **Identification:** Identify clearly defined and meaningful entities in the input text.
+    *   **Precision Over Recall:** Prefer extracting fewer, high-value entities over capturing every noun phrase. Skip generic, low-information, or presentation-only phrases even if they appear repeatedly.
     *   **Entity Details:** For each identified entity, extract the following information:
         *   `entity_name`: The name of the entity. If the entity name is case-insensitive, capitalize the first letter of each significant word (title case). Ensure **consistent naming** across the entire extraction process.
         *   `entity_type`: Categorize the entity using one of the following types: `{entity_types}`. If none of the provided entity types apply, **SKIP the entity entirely** (do NOT classify as "Other" or any new type). Maintaining a clean typed graph is more important than capturing every entity.
-        *   `entity_description`: Provide a concise yet comprehensive description of the entity's attributes and activities, based *solely* on the information present in the input text.
+        *   `entity_description`: Provide a concise yet comprehensive description of the entity's attributes and activities, based EXCLUSIVELY on the information present in the input text. If the entity is not explicitly mentioned in the text, SKIP it entirely. Do NOT infer attributes from general knowledge. Do NOT add background context not present in the text.
+    *   **Skip These Cases Entirely:** Do NOT extract section titles, slide headings, agenda items, generic academic activity phrases, discourse markers, or broad unlabeled abstractions unless the text explicitly defines them as central technical concepts. This includes phrases like `Nội dung`, `Mục tiêu`, `Đánh giá`, `Phân tích`, `Trao đổi`, `Trình bày`, `Kết luận`, `Giới thiệu`, and similar presentation scaffolding.
+    *   **Entity Significance Test:** Extract an entity only if at least one of the following is true:
+        *   it is explicitly defined or described in the text,
+        *   it participates in a specific technical relationship,
+        *   it is a named method, model, framework, algorithm, tool, metric, person, or organization,
+        *   it is a domain concept whose identity is more specific than a generic task or document section.
     *   **Output Format - Entities:** Output a total of 4 fields for each entity, delimited by `{tuple_delimiter}`, on a single line. The first field *must* be the literal string `entity`.
         *   Format: `entity{tuple_delimiter}entity_name{tuple_delimiter}entity_type{tuple_delimiter}entity_description`
 
 2.  **Relationship Extraction & Output:**
-    *   **Identification:** Identify direct, clearly stated, and meaningful relationships between previously extracted entities.
-    *   **N-ary Relationship Decomposition:** If a single statement describes a relationship involving more than two entities (an N-ary relationship), decompose it into multiple binary (two-entity) relationship pairs for separate description.
-        *   **Example:** For "Alice, Bob, and Carol collaborated on Project X," extract binary relationships such as "Alice collaborated with Project X," "Bob collaborated with Project X," and "Carol collaborated with Project X," or "Alice collaborated with Bob," based on the most reasonable binary interpretations.
+    *   **Identification:** Identify direct, clearly stated, and meaningful relationships between previously extracted entities. If a relationship is not explicitly stated in the text, SKIP it entirely. Do NOT infer relationships from general/background knowledge.
+    *   **Conservative N-ary Relationship Decomposition:** If a single statement describes a relationship involving more than two entities (an N-ary relationship), decompose it into binary pairs ONLY when each resulting pair is explicitly meaningful on its own. Do NOT create all pairwise combinations mechanically.
+        *   **Example:** For "Alice, Bob, and Carol collaborated on Project X," prefer `Alice -> Project X`, `Bob -> Project X`, `Carol -> Project X` if those are the direct stated relations. Do NOT add `Alice -> Bob` unless the collaboration between them is explicitly stated or clearly central.
     *   **Relationship Details:** For each binary relationship, extract the following fields:
         *   `source_entity`: The name of the source entity. Ensure **consistent naming** with entity extraction. Capitalize the first letter of each significant word (title case) if the name is case-insensitive.
         *   `target_entity`: The name of the target entity. Ensure **consistent naming** with entity extraction. Capitalize the first letter of each significant word (title case) if the name is case-insensitive.
         *   `relationship_keywords`: One or more high-level keywords summarizing the overarching nature, concepts, or themes of the relationship. Multiple keywords within this field must be separated by a comma `,`. **DO NOT use `{tuple_delimiter}` for separating multiple keywords within this field.**
-        *   `relationship_description`: A concise explanation of the nature of the relationship between the source and target entities, providing a clear rationale for their connection.
+        *   `relationship_description`: A concise explanation of the nature of the relationship between the source and target entities, based EXCLUSIVELY on the information present in the input text. Do NOT infer rationale from general knowledge. Do NOT add background context not present in the text.
+    *   **Skip These Relationships Entirely:** Do NOT create a relationship only because two entities appear in the same sentence, bullet list, heading, or slide. Do NOT create relationships involving generic academic activity phrases, presentation structure, or document organization unless the relationship is itself the substantive topic.
     *   **Output Format - Relationships:** Output a total of 5 fields for each relationship, delimited by `{tuple_delimiter}`, on a single line. The first field *must* be the literal string `relation`.
         *   Format: `relation{tuple_delimiter}source_entity{tuple_delimiter}target_entity{tuple_delimiter}relationship_keywords{tuple_delimiter}relationship_description`
 
@@ -41,6 +51,7 @@ You are a Knowledge Graph Specialist responsible for extracting entities and rel
 4.  **Relationship Direction & Duplication:**
     *   Treat all relationships as **undirected** unless explicitly stated otherwise. Swapping the source and target entities for an undirected relationship does not constitute a new relationship.
     *   Avoid outputting duplicate relationships.
+    *   If either endpoint is too generic, presentation-like, or weakly defined, SKIP the relationship entirely.
 
 5.  **Output Order & Prioritization:**
     *   Output all extracted entities first, followed by all extracted relationships.
@@ -60,7 +71,9 @@ You are a Knowledge Graph Specialist responsible for extracting entities and rel
 {examples}
 """
 
-PROMPTS["entity_extraction_user_prompt"] = """---Task---
+PROMPTS[
+    "entity_extraction_user_prompt"
+] = """---Task---
 Extract entities and relationships from the input text in Data to be Processed below.
 
 ---Instructions---
@@ -81,7 +94,9 @@ Extract entities and relationships from the input text in Data to be Processed b
 <Output>
 """
 
-PROMPTS["entity_continue_extraction_user_prompt"] = """---Task---
+PROMPTS[
+    "entity_continue_extraction_user_prompt"
+] = """---Task---
 Based on the last extraction task, identify and extract any **missed or incorrectly formatted** entities and relationships from the input text.
 
 ---Instructions---
@@ -90,6 +105,7 @@ Based on the last extraction task, identify and extract any **missed or incorrec
     *   **Do NOT** re-output entities and relationships that were **correctly and fully** extracted in the last task.
     *   If an entity or relationship was **missed** in the last task, extract and output it now according to the system format.
     *   If an entity or relationship was **truncated, had missing fields, or was otherwise incorrectly formatted** in the last task, re-output the *corrected and complete* version in the specified format.
+    *   Maintain the same conservative filtering rules from the system prompt. Do NOT add generic headings, presentation scaffolding, or weakly supported relationships during this continuation step.
 3.  **Output Format - Entities:** Output a total of 4 fields for each entity, delimited by `{tuple_delimiter}`, on a single line. The first field *must* be the literal string `entity`.
 4.  **Output Format - Relationships:** Output a total of 5 fields for each relationship, delimited by `{tuple_delimiter}`, on a single line. The first field *must* be the literal string `relation`.
 5.  **Output Content Only:** Output *only* the extracted list of entities and relationships. Do not include any introductory or concluding remarks, explanations, or additional text before or after the list.
@@ -172,7 +188,9 @@ relation{tuple_delimiter}Cache{tuple_delimiter}Cache Hit Rate{tuple_delimiter}pe
 """,
 ]
 
-PROMPTS["summarize_entity_descriptions"] = """---Role---
+PROMPTS[
+    "summarize_entity_descriptions"
+] = """---Role---
 You are a Knowledge Graph Specialist, proficient in data curation and synthesis.
 
 ---Task---
@@ -181,7 +199,7 @@ Your task is to synthesize a list of descriptions of a given entity or relation 
 ---Instructions---
 1. Input Format: The description list is provided in JSON format. Each JSON object (representing a single description) appears on a new line within the `Description List` section.
 2. Output Format: The merged description will be returned as plain text, presented in multiple paragraphs, without any additional formatting or extraneous comments before or after the summary.
-3. Comprehensiveness: The summary must integrate all key information from *every* provided description. Do not omit any important facts or details.
+3. Comprehensiveness: The summary must integrate all key information from *every* provided description, using ONLY the information provided below. Do NOT add any facts, context, or background knowledge not present in the descriptions. Do not omit any important facts or details.
 4. Context: Ensure the summary is written from an objective, third-person perspective; explicitly mention the name of the entity or relation for full clarity and context.
 5. Context & Objectivity:
   - Write the summary from an objective, third-person perspective.
@@ -211,7 +229,9 @@ PROMPTS["fail_response"] = (
     "Sorry, I'm not able to provide an answer to that question.[no-context]"
 )
 
-PROMPTS["rag_response"] = """---Role---
+PROMPTS[
+    "rag_response"
+] = """---Role---
 
 You are an expert AI assistant specializing in synthesizing information from a provided knowledge base. Your primary function is to answer user queries accurately by ONLY using the information within the provided **Context**.
 
@@ -273,7 +293,9 @@ Consider the conversation history if provided to maintain conversational flow an
 {context_data}
 """
 
-PROMPTS["naive_rag_response"] = """---Role---
+PROMPTS[
+    "naive_rag_response"
+] = """---Role---
 
 You are an expert AI assistant specializing in synthesizing information from a provided knowledge base. Your primary function is to answer user queries accurately by ONLY using the information within the provided **Context**.
 
@@ -335,7 +357,9 @@ Consider the conversation history if provided to maintain conversational flow an
 {content_data}
 """
 
-PROMPTS["kg_query_context"] = """
+PROMPTS[
+    "kg_query_context"
+] = """
 Knowledge Graph Data (Entity):
 
 ```json
@@ -362,7 +386,9 @@ Reference Document List (Each entry starts with a [reference_id] that correspond
 
 """
 
-PROMPTS["naive_query_context"] = """
+PROMPTS[
+    "naive_query_context"
+] = """
 Document Chunks (Each entry has a reference_id refer to the `Reference Document List`):
 
 ```json
@@ -377,7 +403,9 @@ Reference Document List (Each entry starts with a [reference_id] that correspond
 
 """
 
-PROMPTS["keywords_extraction"] = """---Role---
+PROMPTS[
+    "keywords_extraction"
+] = """---Role---
 You are an expert keyword extractor, specializing in analyzing user queries for a Retrieval-Augmented Generation (RAG) system. Your purpose is to identify both high-level and low-level keywords in the user's query that will be used for effective document retrieval.
 
 ---Goal---

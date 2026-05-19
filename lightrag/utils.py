@@ -3117,6 +3117,22 @@ def fix_tuple_delimiter_corruption(
         record,
     )
 
+    # Fix: <|<entity_type>|> mistakenly used as tuple delimiter by LLM.
+    # E.g., "Store<|concept|>Store is..." -> "Store<|#|>concept<|#|>Store is..."
+    # LLM copies the <|...|> shape but writes entity type instead of the # core.
+    # Only matches whitelisted entity types to avoid corrupting literal text.
+    import os as _os
+    from lightrag.constants import DEFAULT_ENTITY_TYPES as _DEFAULT_TYPES
+    _types_env = _os.getenv("ENTITY_TYPES", "")
+    _known_types = [t.strip() for t in _types_env.split(",") if t.strip()] or _DEFAULT_TYPES
+    if _known_types:
+        _types_pat = "|".join(re.escape(t) for t in _known_types)
+        record = re.sub(
+            rf"<\|({_types_pat})\|>",
+            rf"{tuple_delimiter}\1{tuple_delimiter}",
+            record,
+        )
+
     return record
 
 

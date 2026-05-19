@@ -123,8 +123,11 @@ def _enrich_response_with_images(
 
     # Count markers in LLM response (before enrichment)
     import re as _re
-    markers_in_response = _re.findall(r'\[IMG_[^\]]+\]', response)
-    logger.info(f"[IMG_TRACE] LLM response has {len(markers_in_response)} markers: {markers_in_response[:5]}")
+
+    markers_in_response = _re.findall(r"\[IMG_[^\]]+\]", response)
+    logger.info(
+        f"[IMG_TRACE] LLM response has {len(markers_in_response)} markers: {markers_in_response[:5]}"
+    )
 
     # Collect images per source chunk
     chunks = raw_data.get("data", {}).get("chunks", [])
@@ -140,7 +143,9 @@ def _enrich_response_with_images(
             all_filenames.update(chunk_imgs.values())
             total_markers_in_chunks += len(chunk_imgs)
 
-    logger.info(f"[IMG_TRACE] Source chunks: {len(chunks)} total, {len(per_chunk_images)} with images, {total_markers_in_chunks} total markers, {len(all_filenames)} unique files")
+    logger.info(
+        f"[IMG_TRACE] Source chunks: {len(chunks)} total, {len(per_chunk_images)} with images, {total_markers_in_chunks} total markers, {len(all_filenames)} unique files"
+    )
 
     if not all_filenames:
         return response
@@ -161,7 +166,9 @@ def _enrich_response_with_images(
     for marker, filenames in marker_counts.items():
         if marker in enriched and len(filenames) == 1:
             # Replace first occurrence with image on its own line, remove duplicates
-            enriched = enriched.replace(marker, f"\n\n![](/images/{filenames[0]})\n\n", 1)
+            enriched = enriched.replace(
+                marker, f"\n\n![](/images/{filenames[0]})\n\n", 1
+            )
             enriched = enriched.replace(marker, "")  # remove any remaining duplicates
             replaced_files.add(filenames[0])
             replaced_count += 1
@@ -171,24 +178,25 @@ def _enrich_response_with_images(
 
     # Clean up excessive newlines from inline image insertion
     import re as _re_clean
-    enriched = _re_clean.sub(r'\n{3,}', '\n\n', enriched)
+
+    enriched = _re_clean.sub(r"\n{3,}", "\n\n", enriched)
 
     # Strip any remaining unresolved [IMG_xxx] markers (quarantined/hallucinated)
-    unresolved_before = len(_re_clean.findall(r'\[IMG_[^\]]+\]', enriched))
-    enriched = _re_clean.sub(r'\[IMG_[^\]]+\]', '', enriched)
+    unresolved_before = len(_re_clean.findall(r"\[IMG_[^\]]+\]", enriched))
+    enriched = _re_clean.sub(r"\[IMG_[^\]]+\]", "", enriched)
     if unresolved_before:
         logger.info(f"Stripped {unresolved_before} unresolved markers")
 
     # Remove References section if it only contains resolved images or empty refs
     # Matches: "### References\n- [1] ...\n- [2] ..." or "References\n[1] ..."
     enriched = _re_clean.sub(
-        r'\n#{0,3}\s*References?\s*\n(?:\s*[-*]?\s*\[\d+\].*\n?)+',
-        '\n',
+        r"\n#{0,3}\s*References?\s*\n(?:\s*[-*]?\s*\[\d+\].*\n?)+",
+        "\n",
         enriched,
         flags=_re_clean.IGNORECASE,
     )
 
-    enriched = _re_clean.sub(r'\n{3,}', '\n\n', enriched).strip()
+    enriched = _re_clean.sub(r"\n{3,}", "\n\n", enriched).strip()
 
     if replaced_count > 0:
         logger.info(f"Image injection: {replaced_count} markers replaced inline")
@@ -1223,9 +1231,11 @@ async def _rebuild_single_entity(
                 "description": final_description,
                 "entity_type": entity_type,
                 "source_id": GRAPH_FIELD_SEP.join(source_chunk_ids),
-                "file_path": GRAPH_FIELD_SEP.join(file_paths)
-                if file_paths
-                else current_entity.get("file_path", "unknown_source"),
+                "file_path": (
+                    GRAPH_FIELD_SEP.join(file_paths)
+                    if file_paths
+                    else current_entity.get("file_path", "unknown_source")
+                ),
                 "created_at": int(time.time()),
                 "truncate": truncation_info,
             }
@@ -1576,15 +1586,19 @@ async def _rebuild_single_relationship(
     # Update relationship in graph storage
     updated_relationship_data = {
         **current_relationship,
-        "description": final_description
-        if final_description
-        else current_relationship.get("description", ""),
+        "description": (
+            final_description
+            if final_description
+            else current_relationship.get("description", "")
+        ),
         "keywords": combined_keywords,
         "weight": weight,
         "source_id": GRAPH_FIELD_SEP.join(limited_chunk_ids),
-        "file_path": GRAPH_FIELD_SEP.join([fp for fp in file_paths_list if fp])
-        if file_paths_list
-        else current_relationship.get("file_path", "unknown_source"),
+        "file_path": (
+            GRAPH_FIELD_SEP.join([fp for fp in file_paths_list if fp])
+            if file_paths_list
+            else current_relationship.get("file_path", "unknown_source")
+        ),
         "truncate": truncation_info,
     }
 
@@ -3212,9 +3226,8 @@ async def kg_query(
     # --- Stat mode: direct graph statistics (must be after use_model_func defined) ---
     if query_param.mode == "stat":
         from lightrag.stat_query import handle_stat_query
-        answer = await handle_stat_query(
-            query, knowledge_graph_inst, use_model_func
-        )
+
+        answer = await handle_stat_query(query, knowledge_graph_inst, use_model_func)
         return QueryResult(content=answer)
 
     hl_keywords, ll_keywords = await get_keywords_from_query(
@@ -3589,21 +3602,41 @@ async def _get_vector_context(
 # Only true for queries explicitly targeting metadata. Generic "liệt kê X"
 # stays in mix because it usually targets content, not metadata.
 _METADATA_INDICATORS_VI = [
-    "bao nhiêu tài liệu", "bao nhiêu luận văn", "bao nhiêu paper",
-    "bao nhiêu bài", "đếm số tài liệu",
-    "tác giả", "ai viết", "ai là tác giả",
-    "năm xuất bản", "xuất bản năm", "công bố năm",
-    "thuộc khoa", "thuộc ngành", "ngành nào",
+    "bao nhiêu tài liệu",
+    "bao nhiêu luận văn",
+    "bao nhiêu paper",
+    "bao nhiêu bài",
+    "đếm số tài liệu",
+    "tác giả",
+    "ai viết",
+    "ai là tác giả",
+    "năm xuất bản",
+    "xuất bản năm",
+    "công bố năm",
+    "thuộc khoa",
+    "thuộc ngành",
+    "ngành nào",
     "publisher",
-    "danh sách tác giả", "danh sách tài liệu", "danh sách luận văn",
-    "top tác giả", "top luận văn",
+    "danh sách tác giả",
+    "danh sách tài liệu",
+    "danh sách luận văn",
+    "top tác giả",
+    "top luận văn",
 ]
 _METADATA_INDICATORS_EN = [
-    "how many documents", "how many papers", "how many theses",
-    "which author", "who wrote", "author of",
-    "year published", "publisher",
-    "list of authors", "list of papers", "list of documents",
-    "top authors", "top papers",
+    "how many documents",
+    "how many papers",
+    "how many theses",
+    "which author",
+    "who wrote",
+    "author of",
+    "year published",
+    "publisher",
+    "list of authors",
+    "list of papers",
+    "list of documents",
+    "top authors",
+    "top papers",
 ]
 
 
@@ -3753,27 +3786,35 @@ async def _perform_kg_search(
         try:
             # Step 1: VDB search
             if entities_vdb is not None:
-                entity_vdb_hits = await entities_vdb.query(
-                    query=query,
-                    top_k=query_param.top_k,
-                    query_embedding=query_embedding,
-                ) or []
+                entity_vdb_hits = (
+                    await entities_vdb.query(
+                        query=query,
+                        top_k=query_param.top_k,
+                        query_embedding=query_embedding,
+                    )
+                    or []
+                )
             else:
                 entity_vdb_hits = []
 
             if relationships_vdb is not None:
-                relation_vdb_hits = await relationships_vdb.query(
-                    query=query,
-                    top_k=query_param.top_k,
-                    query_embedding=query_embedding,
-                ) or []
+                relation_vdb_hits = (
+                    await relationships_vdb.query(
+                        query=query,
+                        top_k=query_param.top_k,
+                        query_embedding=query_embedding,
+                    )
+                    or []
+                )
             else:
                 relation_vdb_hits = []
 
             # Step 2: Enrich entities with graph metadata (description/type/file_path/source_id)
             if entity_vdb_hits and knowledge_graph_inst is not None:
                 entity_names = [
-                    hit["entity_name"] for hit in entity_vdb_hits if hit.get("entity_name")
+                    hit["entity_name"]
+                    for hit in entity_vdb_hits
+                    if hit.get("entity_name")
                 ]
                 if entity_names:
                     nodes = await knowledge_graph_inst.get_nodes_batch(entity_names)
@@ -3781,12 +3822,18 @@ async def _perform_kg_search(
                     for hit in entity_vdb_hits:
                         node = nodes.get(hit.get("entity_name"))
                         if node:
-                            hit.update({
-                                "description": node.get("description", ""),
-                                "entity_type": node.get("entity_type", ""),
-                                "file_path": node.get("file_path", hit.get("file_path", "")),
-                                "source_id": node.get("source_id", hit.get("source_id", "")),
-                            })
+                            hit.update(
+                                {
+                                    "description": node.get("description", ""),
+                                    "entity_type": node.get("entity_type", ""),
+                                    "file_path": node.get(
+                                        "file_path", hit.get("file_path", "")
+                                    ),
+                                    "source_id": node.get(
+                                        "source_id", hit.get("source_id", "")
+                                    ),
+                                }
+                            )
 
             # Step 3: Enrich relations with graph metadata
             if relation_vdb_hits and knowledge_graph_inst is not None:
@@ -3801,13 +3848,19 @@ async def _perform_kg_search(
                     for hit in relation_vdb_hits:
                         edge = edges.get((hit.get("src_id"), hit.get("tgt_id")))
                         if edge:
-                            hit.update({
-                                "description": edge.get("description", ""),
-                                "keywords": edge.get("keywords", ""),
-                                "weight": edge.get("weight", 1.0),
-                                "file_path": edge.get("file_path", hit.get("file_path", "")),
-                                "source_id": edge.get("source_id", hit.get("source_id", "")),
-                            })
+                            hit.update(
+                                {
+                                    "description": edge.get("description", ""),
+                                    "keywords": edge.get("keywords", ""),
+                                    "weight": edge.get("weight", 1.0),
+                                    "file_path": edge.get(
+                                        "file_path", hit.get("file_path", "")
+                                    ),
+                                    "source_id": edge.get(
+                                        "source_id", hit.get("source_id", "")
+                                    ),
+                                }
+                            )
 
             # Step 4: Inject source_id from junction (overrides graph source_id when junction richer)
             final_entities = await _enrich_entities_from_junction(
@@ -4249,7 +4302,8 @@ async def _build_context_str(
 
     # Count IMG markers in context being sent to LLM
     import re as _re_ctx
-    _ctx_markers = _re_ctx.findall(r'\[IMG_[^\]]+\]', text_units_str)
+
+    _ctx_markers = _re_ctx.findall(r"\[IMG_[^\]]+\]", text_units_str)
     logger.info(
         f"Final context: {len(entities_context)} entities, {len(relations_context)} relations, {len(chunks_context)} chunks, {len(_ctx_markers)} IMG markers"
     )
@@ -5151,9 +5205,14 @@ async def naive_query(
 
     # Count IMG markers in chunks being sent to LLM
     import re as _re_naive
-    _all_chunk_text = " ".join(c.get("content", "") for c in processed_chunks_with_ref_ids)
-    _naive_markers = _re_naive.findall(r'\[IMG_[^\]]+\]', _all_chunk_text)
-    logger.info(f"Final context: {len(processed_chunks_with_ref_ids)} chunks, {len(_naive_markers)} IMG markers in context")
+
+    _all_chunk_text = " ".join(
+        c.get("content", "") for c in processed_chunks_with_ref_ids
+    )
+    _naive_markers = _re_naive.findall(r"\[IMG_[^\]]+\]", _all_chunk_text)
+    logger.info(
+        f"Final context: {len(processed_chunks_with_ref_ids)} chunks, {len(_naive_markers)} IMG markers in context"
+    )
 
     # Build raw data structure for naive mode using processed chunks with reference IDs
     raw_data = convert_to_user_format(

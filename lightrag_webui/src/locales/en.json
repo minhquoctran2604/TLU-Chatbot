@@ -410,7 +410,8 @@
         "hybrid": "Hybrid",
         "mix": "Mix",
         "bypass": "Bypass",
-        "stat": "Stat"
+        "stat": "Stat",
+        "graph": "Graph Walk"
       },
       "responseFormat": "Response Format",
       "responseFormatTooltip": "Defines the response format. Examples:\n• Multiple Paragraphs\n• Single Paragraph\n• Bullet Points",

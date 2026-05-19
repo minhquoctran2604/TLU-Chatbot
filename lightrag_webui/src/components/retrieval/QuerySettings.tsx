@@ -140,6 +140,7 @@ export default function QuerySettings() {
                       <SelectItem value="hybrid">{t('retrievePanel.querySettings.queryModeOptions.hybrid')}</SelectItem>
                       <SelectItem value="stat">{t('retrievePanel.querySettings.queryModeOptions.stat')}</SelectItem>
                       <SelectItem value="mix">{t('retrievePanel.querySettings.queryModeOptions.mix')}</SelectItem>
+                      <SelectItem value="graph">{t('retrievePanel.querySettings.queryModeOptions.graph')}</SelectItem>
                     </SelectGroup>
                   </SelectContent>
                 </Select>

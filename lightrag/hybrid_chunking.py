@@ -10,8 +10,15 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 
-def build_hybrid_chunking_func(max_tokens: int = 512):
+def build_hybrid_chunking_func(
+    max_tokens: int = 512,
+    embed_model_name: str = "microsoft/harrier-oss-v1-270m",
+):
     """Factory that returns a chunking_func compatible with LightRAG's signature.
+
+    Uses HuggingFace tokenizer of the embedding model to keep chunk-size
+    accounting in sync with the embedder (avoids Tiktoken/WordPiece mismatch
+    that caused "Token indices sequence length is longer than max" warnings).
 
     The returned function matches LightRAG's chunking_func signature:
         (tokenizer, content, split_by_character, split_by_character_only,
@@ -20,6 +27,9 @@ def build_hybrid_chunking_func(max_tokens: int = 512):
     Each dict has keys: tokens, content, chunk_order_index
     """
     from docling_core.transforms.chunker import HybridChunker
+    from docling_core.transforms.chunker.tokenizer.huggingface import (
+        HuggingFaceTokenizer,
+    )
     from docling_core.transforms.chunker.hierarchical_chunker import (
         ChunkingDocSerializer,
         ChunkingSerializerProvider,
@@ -39,8 +49,17 @@ def build_hybrid_chunking_func(max_tokens: int = 512):
                 ),
             )
 
-    chunker = HybridChunker(
+    # Sync tokenizer with embedding model to prevent token-count drift.
+    hf_tokenizer = HuggingFaceTokenizer.from_pretrained(
+        model_name=embed_model_name,
         max_tokens=max_tokens,
+    )
+    logger.info(
+        f"HybridChunker using HF tokenizer '{embed_model_name}' max_tokens={max_tokens}"
+    )
+
+    chunker = HybridChunker(
+        tokenizer=hf_tokenizer,
         merge_peers=True,
         repeat_table_header=True,
         serializer_provider=ImageRefSerializerProvider(),
@@ -66,11 +85,7 @@ def build_hybrid_chunking_func(max_tokens: int = 512):
             result = []
             for i, chunk in enumerate(doc_chunks):
                 chunk_text = chunker.contextualize(chunk)
-                token_count = (
-                    len(tokenizer.encode(chunk_text))
-                    if hasattr(tokenizer, "encode")
-                    else len(chunk_text.split())
-                )
+                token_count = len(hf_tokenizer.encode(chunk_text))
                 result.append(
                     {
                         "tokens": token_count,
