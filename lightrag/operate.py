@@ -3708,6 +3708,251 @@ async def _enrich_relations_from_junction(
     return enriched
 
 
+async def _perform_graph_ego_walk(
+    query: str,
+    hl_keywords: str,
+    entities_vdb,
+    knowledge_graph_inst,
+    entity_chunks_storage,
+    relation_chunks_storage,
+    query_param,
+    query_embedding=None,
+):
+    """Topology-anchored ego walk on content graph with hl-keyword edge filter.
+
+    Algorithm:
+        1. Seed selection: VDB match query → top-K seed entities
+        2. Per seed, branching by degree:
+           - degree < THRESHOLD_LOW: BFS depth=SMALL_DEPTH (collect full ego-graph)
+           - degree >= THRESHOLD_LOW: depth=LARGE_DEPTH, top-N edges by weight
+        3. Edge filter by hl_keywords (soft: boost score, strict: drop non-matching)
+        4. Collect entities + edges + chunks
+
+    Env vars (all int unless noted):
+        GRAPH_SEED_TOP_K=10
+        GRAPH_DEG_THRESHOLD=30
+        GRAPH_SMALL_DEPTH=2
+        GRAPH_LARGE_DEPTH=1
+        GRAPH_LARGE_TOP_N_EDGES=20
+        GRAPH_HL_KEYWORD_MODE=soft  # "soft" or "strict"
+    """
+    import os as _os
+
+    seed_top_k = int(_os.getenv("GRAPH_SEED_TOP_K", "10"))
+    deg_threshold = int(_os.getenv("GRAPH_DEG_THRESHOLD", "30"))
+    small_depth = int(_os.getenv("GRAPH_SMALL_DEPTH", "2"))
+    large_depth = int(_os.getenv("GRAPH_LARGE_DEPTH", "1"))
+    large_top_n = int(_os.getenv("GRAPH_LARGE_TOP_N_EDGES", "20"))
+    hl_mode = _os.getenv("GRAPH_HL_KEYWORD_MODE", "soft").lower()
+
+    if entities_vdb is None or knowledge_graph_inst is None:
+        logger.warning("[graph_ego_walk] missing entities_vdb or knowledge_graph_inst")
+        return [], []
+
+    # Step 1: Seed selection via VDB
+    try:
+        seed_hits = await entities_vdb.query(
+            query=query,
+            top_k=seed_top_k,
+            query_embedding=query_embedding,
+        ) or []
+    except Exception as e:
+        logger.warning(f"[graph_ego_walk] seed VDB query failed: {e}")
+        return [], []
+
+    if not seed_hits:
+        logger.info("[graph_ego_walk] no seed entities matched")
+        return [], []
+
+    seed_names = [hit["entity_name"] for hit in seed_hits if hit.get("entity_name")]
+    if not seed_names:
+        return [], []
+
+    # Step 2: Per-seed ego walk
+    # Edge metadata cache (populated during large-ego sort + reused for hl filter)
+    edge_meta_cache = {}
+    # Get seed degrees in batch
+    try:
+        degrees = await knowledge_graph_inst.node_degrees_batch(seed_names)
+    except Exception as e:
+        logger.warning(f"[graph_ego_walk] node_degrees_batch failed: {e}")
+        degrees = {n: 0 for n in seed_names}
+
+    # Collect visited entities + edges using BFS frontier expansion
+    visited_entities = {}  # name -> seed score (cosine from seed_hits)
+    visited_edges = {}  # (src,tgt sorted) -> {src, tgt, hops_from_seed}
+
+    # Prepare seed scores from VDB
+    seed_score_map = {
+        hit["entity_name"]: hit.get("distance", 0.0)
+        for hit in seed_hits
+        if hit.get("entity_name")
+    }
+
+    for seed in seed_names:
+        seed_deg = degrees.get(seed, 0)
+        if seed_deg < deg_threshold:
+            depth = small_depth
+            edge_cap = None  # no cap
+        else:
+            depth = large_depth
+            edge_cap = large_top_n
+
+        # BFS expand
+        frontier = {seed}
+        visited_local = {seed}
+        for _ in range(depth):
+            if not frontier:
+                break
+            # Get edges for all frontier nodes
+            try:
+                edges_dict = await knowledge_graph_inst.get_nodes_edges_batch(list(frontier))
+            except Exception as e:
+                logger.warning(f"[graph_ego_walk] get_nodes_edges_batch failed: {e}")
+                break
+
+            next_frontier = set()
+            for node, edge_list in edges_dict.items():
+                if not edge_list:
+                    continue
+                # Optional cap by edge weight
+                edges_to_walk = edge_list
+                if edge_cap is not None and len(edge_list) > edge_cap:
+                    # Need edge weights to sort. Fetch edge metadata (cache for reuse in hl filter).
+                    edge_pair_dicts = [
+                        {"src": e[0], "tgt": e[1]} for e in edge_list
+                    ]
+                    try:
+                        edge_meta = await knowledge_graph_inst.get_edges_batch(edge_pair_dicts)
+                        edge_meta_cache.update(edge_meta)
+                    except Exception:
+                        edge_meta = {}
+                    weighted = sorted(
+                        edge_list,
+                        key=lambda e: edge_meta.get((e[0], e[1]), {}).get("weight", 0.0),
+                        reverse=True,
+                    )
+                    edges_to_walk = weighted[:edge_cap]
+
+                for e in edges_to_walk:
+                    src, tgt = e[0], e[1]
+                    other = tgt if src == node else src
+                    edge_key = tuple(sorted([src, tgt]))
+                    visited_edges.setdefault(edge_key, {"src": src, "tgt": tgt})
+                    if other not in visited_local:
+                        next_frontier.add(other)
+                        visited_local.add(other)
+
+            # next_frontier already deduped against visited_local inside loop above (line check)
+            frontier = next_frontier
+
+        # Record visited entities with score (seed entities get original score, expanded get 0)
+        for name in visited_local:
+            if name not in visited_entities:
+                visited_entities[name] = seed_score_map.get(name, 0.0)
+
+    if not visited_entities:
+        logger.info("[graph_ego_walk] walk produced no entities")
+        return [], []
+
+    # Step 3: hl_keyword edge filtering
+    hl_keyword_set = set()
+    if hl_keywords:
+        hl_keyword_set = {
+            kw.strip().lower() for kw in hl_keywords.split(",") if kw.strip()
+        }
+
+    # Fetch metadata only for edges NOT in cache (large-ego seeds pre-cached during sort).
+    if visited_edges:
+        uncached_pairs = [
+            {"src": v["src"], "tgt": v["tgt"]}
+            for k, v in visited_edges.items()
+            if (v["src"], v["tgt"]) not in edge_meta_cache
+            and (v["tgt"], v["src"]) not in edge_meta_cache
+        ]
+        if uncached_pairs:
+            try:
+                new_edges = await knowledge_graph_inst.get_edges_batch(uncached_pairs)
+                edge_meta_cache.update(new_edges)
+            except Exception as e:
+                logger.warning(f"[graph_ego_walk] edge metadata fetch failed: {e}")
+    edge_metadata = edge_meta_cache
+
+    filtered_edges = []
+    for edge_key, edge_pair in visited_edges.items():
+        src, tgt = edge_pair["src"], edge_pair["tgt"]
+        meta = edge_metadata.get((src, tgt), {})
+        # Compute hl_keyword overlap
+        edge_keywords = (meta.get("keywords", "") or "").lower()
+        edge_desc = (meta.get("description", "") or "").lower()
+        overlap = 0
+        if hl_keyword_set:
+            for kw in hl_keyword_set:
+                if kw and (kw in edge_keywords or kw in edge_desc):
+                    overlap += 1
+
+        if hl_mode == "strict" and hl_keyword_set and overlap == 0:
+            continue  # drop edge
+
+        edge_hit = {
+            "src_id": src,
+            "tgt_id": tgt,
+            "description": meta.get("description", ""),
+            "keywords": meta.get("keywords", ""),
+            "weight": float(meta.get("weight", 1.0)),
+            "file_path": meta.get("file_path", ""),
+            "source_id": meta.get("source_id", ""),
+            "hl_overlap": overlap,
+        }
+        # Boost weight by hl overlap for soft mode
+        if hl_mode == "soft" and overlap > 0:
+            edge_hit["weight"] *= 1.0 + 0.5 * overlap
+        filtered_edges.append(edge_hit)
+
+    # Sort edges by weight DESC
+    filtered_edges.sort(key=lambda e: e["weight"], reverse=True)
+
+    # Step 4: Build entity hits with metadata
+    entity_names_list = list(visited_entities.keys())
+    try:
+        nodes = await knowledge_graph_inst.get_nodes_batch(entity_names_list)
+    except Exception as e:
+        logger.warning(f"[graph_ego_walk] entity metadata fetch failed: {e}")
+        nodes = {}
+
+    entity_hits = []
+    for name in entity_names_list:
+        node = nodes.get(name)
+        if not node:
+            continue
+        entity_hits.append({
+            "entity_name": name,
+            "description": node.get("description", ""),
+            "entity_type": node.get("entity_type", ""),
+            "file_path": node.get("file_path", ""),
+            "source_id": node.get("source_id", ""),
+            "distance": visited_entities.get(name, 0.0),
+        })
+
+    # Sort entities by similarity DESC (LightRAG VDB returns 1 - cosine_distance as 'distance',
+    # so higher = better match. Walk-expanded entities have distance=0.0 → end of list).
+    entity_hits.sort(key=lambda h: h.get("distance", 0.0), reverse=True)
+
+    # Step 5: Junction enrichment (chunk source_id override)
+    final_entities = await _enrich_entities_from_junction(
+        entity_hits, entity_chunks_storage
+    )
+    final_relations = await _enrich_relations_from_junction(
+        filtered_edges, relation_chunks_storage
+    )
+
+    logger.info(
+        f"[graph_ego_walk] seeds={len(seed_names)} | entities={len(final_entities)} "
+        f"| edges={len(final_relations)} | hl_mode={hl_mode} | threshold={deg_threshold}"
+    )
+    return final_entities, final_relations
+
+
 async def _perform_kg_search(
     query: str,
     ll_keywords: str,
@@ -3782,7 +4027,24 @@ async def _perform_kg_search(
     final_entities = []
     final_relations = []
 
-    if query_param.mode in ("local", "global", "hybrid", "mix"):
+    # Graph mode: topology-anchored ego walk (separate branch)
+    if query_param.mode == "graph":
+        try:
+            final_entities, final_relations = await _perform_graph_ego_walk(
+                query=query,
+                hl_keywords=hl_keywords,
+                entities_vdb=entities_vdb,
+                knowledge_graph_inst=knowledge_graph_inst,
+                entity_chunks_storage=entity_chunks_storage,
+                relation_chunks_storage=relation_chunks_storage,
+                query_param=query_param,
+                query_embedding=query_embedding,
+            )
+        except Exception as e:
+            logger.warning(f"Graph ego-walk search failed: {e}")
+            final_entities = []
+            final_relations = []
+    elif query_param.mode in ("local", "global", "hybrid", "mix"):
         try:
             # Step 1: VDB search
             if entities_vdb is not None:
