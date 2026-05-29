@@ -109,7 +109,9 @@ class NetworkXStorage(BaseGraphStorage):
 
     async def node_degree(self, node_id: str) -> int:
         graph = await self._get_graph()
-        return graph.degree(node_id)
+        if graph.has_node(node_id):
+            return int(graph.degree(node_id))
+        return -1  # sentinel: node does not exist in graph
 
     async def edge_degree(self, src_id: str, tgt_id: str) -> int:
         graph = await self._get_graph()

@@ -441,7 +441,9 @@ async def _summarize_descriptions(
     Returns:
         Summarized description string
     """
-    use_llm_func: callable = global_config["llm_model_func"]
+    # Prefer dedicated extract func (when configured) so insert-time summary
+    # can route to a smarter model independent of query LLM.
+    use_llm_func: callable = global_config.get("llm_model_extract_func") or global_config["llm_model_func"]
     # Apply higher priority (8) to entity/relation summary tasks
     use_llm_func = partial(use_llm_func, _priority=8)
 
@@ -2914,7 +2916,9 @@ async def extract_entities(
                     "User cancelled during entity extraction"
                 )
 
-    use_llm_func: callable = global_config["llm_model_func"]
+    # Use dedicated extract func if configured (e.g. route extraction to a
+    # smarter model via a different endpoint), else fall back to query LLM.
+    use_llm_func: callable = global_config.get("llm_model_extract_func") or global_config["llm_model_func"]
     entity_extract_max_gleaning = global_config["entity_extract_max_gleaning"]
 
     ordered_chunks = list(chunks.items())
@@ -3790,7 +3794,12 @@ async def _perform_graph_ego_walk(
     }
 
     for seed in seed_names:
-        seed_deg = degrees.get(seed, 0)
+        seed_deg = degrees.get(seed, -1)
+        if not isinstance(seed_deg, (int, float)):
+            seed_deg = -1
+        # Node does not exist in graph → skip entirely
+        if seed_deg < 0:
+            continue
         if seed_deg < deg_threshold:
             depth = small_depth
             edge_cap = None  # no cap

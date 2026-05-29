@@ -1126,12 +1126,106 @@ def create_app(args):
         name=args.simulated_model_name, tag=args.simulated_model_tag
     )
 
+    def create_extract_llm_func():
+        """Optional separate LLM for entity/relation extraction with failover.
+
+        Activates only when LLM_MODEL_EXTRACT is set. Routes through ROUTER_HOST
+        (falls back to LLM_BINDING_HOST) so extraction can use a smarter model
+        (e.g. 9router gpt-4o-mini / gemini) while query stays on a fast local
+        model (e.g. Ollama Gemma).
+
+        Failover chain: LLM_MODEL_EXTRACT (primary) + LLM_EXTRACT_FAILOVER_MODELS
+        (comma-separated). On rate-limit/error, walks chain; failed model is
+        cooled-down for LLM_COOLDOWN_SEC seconds.
+        """
+        import time as _time
+        from lightrag.llm.openai import openai_complete_if_cache
+
+        extract_model = os.getenv("LLM_MODEL_EXTRACT", "").strip()
+        if not extract_model:
+            return None
+
+        extract_host = os.getenv("ROUTER_HOST") or args.llm_binding_host
+        extract_key = os.getenv("ROUTER_API_KEY") or args.llm_binding_api_key
+
+        _failover_env = os.getenv("LLM_EXTRACT_FAILOVER_MODELS", "").strip()
+        _failover_models: list[str] = [extract_model]
+        if _failover_env:
+            for m in _failover_env.split(","):
+                m = m.strip()
+                if m and m != extract_model:
+                    _failover_models.append(m)
+        _cooldown: dict[str, float] = {}
+        _COOLDOWN_SEC = int(os.getenv("LLM_COOLDOWN_SEC", "60"))
+
+        logger.info(
+            f"Extract LLM enabled: host={extract_host} chain={_failover_models} "
+            f"(cooldown {_COOLDOWN_SEC}s)"
+        )
+
+        async def extract_llm_complete(
+            prompt,
+            system_prompt=None,
+            history_messages=None,
+            keyword_extraction=False,
+            **kwargs,
+        ) -> str:
+            kwargs.pop("keyword_extraction", None)
+            if history_messages is None:
+                history_messages = []
+            kwargs.setdefault("timeout", llm_timeout)
+
+            now = _time.time()
+            last_err: Exception | None = None
+            for model in _failover_models:
+                if _cooldown.get(model, 0) > now:
+                    logger.debug(f"Extract failover: skip {model} (cooldown)")
+                    continue
+                try:
+                    return await openai_complete_if_cache(
+                        model,
+                        prompt,
+                        system_prompt=system_prompt,
+                        history_messages=history_messages,
+                        base_url=extract_host,
+                        api_key=extract_key,
+                        **kwargs,
+                    )
+                except Exception as e:
+                    last_err = e
+                    err_str = str(e)
+                    is_rate_limit = (
+                        "429" in err_str
+                        or "rate_limit" in err_str.lower()
+                        or "quota" in err_str.lower()
+                        or "exhausted" in err_str.lower()
+                    )
+                    if is_rate_limit:
+                        _cooldown[model] = now + _COOLDOWN_SEC
+                        logger.warning(
+                            f"Extract failover: {model} rate-limited, "
+                            f"cooldown {_COOLDOWN_SEC}s. Trying next."
+                        )
+                    else:
+                        logger.warning(
+                            f"Extract failover: {model} error: {err_str[:150]}. "
+                            f"Trying next."
+                        )
+                    continue
+            raise RuntimeError(
+                f"Extract failover exhausted all {len(_failover_models)} models. "
+                f"Last error: {last_err}"
+            )
+
+        return extract_llm_complete
+
     # Initialize RAG with unified configuration
     try:
         rag = LightRAG(
             working_dir=args.working_dir,
             workspace=args.workspace,
             llm_model_func=create_llm_model_func(args.llm_binding),
+            llm_model_extract_func=create_extract_llm_func(),
             llm_model_name=args.llm_model,
             llm_model_max_async=args.max_async,
             summary_max_tokens=args.summary_max_tokens,
