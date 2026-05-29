@@ -20,7 +20,12 @@ sys.path.insert(0, str(ROOT))
 
 from dotenv import load_dotenv
 
-load_dotenv(ROOT / ".env")
+# Try loading from local eval/.env first, then fallback to root .env
+eval_env = ROOT / "eval" / ".env"
+if eval_env.exists():
+    load_dotenv(eval_env)
+else:
+    load_dotenv(ROOT / ".env")
 
 import httpx
 

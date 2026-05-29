@@ -26,7 +26,12 @@ sys.path.insert(0, str(ROOT))
 
 from dotenv import load_dotenv
 
-load_dotenv(ROOT / ".env")
+# Try loading from local eval/.env first, then fallback to root .env
+eval_env = ROOT / "eval" / ".env"
+if eval_env.exists():
+    load_dotenv(eval_env)
+else:
+    load_dotenv(ROOT / ".env")
 
 import httpx
 
@@ -34,8 +39,9 @@ from lightrag.llm.openai import openai_complete_if_cache
 
 
 API_BASE = os.environ.get("LIGHTRAG_API_BASE", "http://localhost:9621")
-LLM_HOST = os.environ["LLM_BINDING_HOST"]
-LLM_KEY = os.environ["LLM_BINDING_API_KEY"]
+# ROUTER_* for smart-judge model via 9router (server's LLM may be Ollama for benchmark)
+LLM_HOST = os.environ.get("ROUTER_HOST") or os.environ["LLM_BINDING_HOST"]
+LLM_KEY = os.environ.get("ROUTER_API_KEY") or os.environ["LLM_BINDING_API_KEY"]
 JUDGE_MODEL = os.environ.get("EVAL_JUDGE_MODEL", "gh/gpt-4o-mini")
 
 # 5 common knowledge + 5 TLU-specific. Latter SHOULD have higher faithfulness

@@ -22,7 +22,12 @@ try:
 except Exception:
     pass
 
-load_dotenv(Path(__file__).parent.parent / ".env")
+# Try loading from local eval/.env first, then fallback to root .env
+eval_env = Path(__file__).parent / ".env"
+if eval_env.exists():
+    load_dotenv(eval_env)
+else:
+    load_dotenv(Path(__file__).parent.parent / ".env")
 
 HERE = Path(__file__).parent
 INDEX_FILE = HERE / "bm25_index.pkl"

@@ -28,6 +28,7 @@ def clean_response(text: str) -> str:
         flags=re.IGNORECASE | re.MULTILINE,
     )
     text = re.sub(r"\[\d+\]", "", text)
+    text = re.sub(r"\[reference_id:\s*\d+\]", "", text, flags=re.IGNORECASE)
     text = re.sub(r"\s+", " ", text).strip()
     return text
 
@@ -49,14 +50,18 @@ CHUNKS_FILE = HERE / "results_chunks.json"
 RAGAS_FILE = HERE / "results_ragas.json"
 
 
-def load_all():
-    with open(QUERIES_FILE, encoding="utf-8") as f:
+def load_all(queries_path=None, eval_path=None, chunks_path=None, ragas_path=None):
+    qp = Path(queries_path) if queries_path else QUERIES_FILE
+    ep = Path(eval_path) if eval_path else RESULTS_FILE
+    cp = Path(chunks_path) if chunks_path else CHUNKS_FILE
+    rp = Path(ragas_path) if ragas_path else RAGAS_FILE
+    with open(qp, encoding="utf-8") as f:
         queries = {q["id"]: q for q in json.load(f)["queries"]}
-    with open(RESULTS_FILE, encoding="utf-8") as f:
+    with open(ep, encoding="utf-8") as f:
         entries = json.load(f)["results"]
-    with open(CHUNKS_FILE, encoding="utf-8") as f:
+    with open(cp, encoding="utf-8") as f:
         chunks_map = {(c["query_id"], c["mode"]): c["chunks"] for c in json.load(f)}
-    with open(RAGAS_FILE, encoding="utf-8") as f:
+    with open(rp, encoding="utf-8") as f:
         ragas = json.load(f)
     return queries, entries, chunks_map, ragas
 
@@ -70,8 +75,8 @@ JUDGE_FAILOVER_MODELS = [
 
 def make_judge_llm_single(model):
     from langchain_openai import ChatOpenAI
-    base_url = os.getenv("LLM_BINDING_HOST", "http://localhost:20128/v1")
-    api_key = os.getenv("LLM_BINDING_API_KEY", "")
+    base_url = os.getenv("ROUTER_HOST", "http://localhost:20128/v1")
+    api_key = os.getenv("ROUTER_API_KEY", "")
     return ChatOpenAI(model=model, api_key=api_key, base_url=base_url, temperature=0.0, timeout=180)
 
 
@@ -101,9 +106,23 @@ def main():
     parser.add_argument("--throttle", type=float, default=0.5)
     parser.add_argument("--model", default=None, help="Override judge model")
     parser.add_argument("--max-chunk-chars", type=int, default=12000, help="Truncate chunks to N chars")
+    # Path overrides
+    parser.add_argument("--queries", default=None, help="Queries JSON path")
+    parser.add_argument("--eval", default=None, help="results_eval.json path")
+    parser.add_argument("--chunks", default=None, help="results_chunks.json path")
+    parser.add_argument("--ragas", default=None, help="results_ragas.json path (read+write)")
     args = parser.parse_args()
 
-    queries, entries, chunks_map, ragas = load_all()
+    global RAGAS_FILE
+    if args.ragas:
+        RAGAS_FILE = Path(args.ragas)
+
+    queries, entries, chunks_map, ragas = load_all(
+        queries_path=args.queries,
+        eval_path=args.eval,
+        chunks_path=args.chunks,
+        ragas_path=args.ragas,
+    )
     if args.metric not in ragas:
         print(f"[ERR] {args.metric} not in {RAGAS_FILE}. Run full first.")
         sys.exit(1)

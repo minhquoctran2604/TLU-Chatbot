@@ -10,7 +10,12 @@ import time
 from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).parent.parent / ".env")
+# Try loading from local eval/.env first, then fallback to root .env
+eval_env = Path(__file__).parent / ".env"
+if eval_env.exists():
+    load_dotenv(eval_env)
+else:
+    load_dotenv(Path(__file__).parent.parent / ".env")
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -26,12 +31,60 @@ TIMEOUT_SEC = 180
 def build_rag_prompt(query: str, chunks: list[dict]) -> tuple[str, str]:
     """Build (system_prompt, user_prompt) for RAG with BM25-retrieved chunks.
 
-    Mimics LightRAG naive mode prompt structure for fair compare.
+    Mirrors LightRAG naive_rag_response prompt VERBATIM for fair apples-to-apples compare.
+    Ensures identical LLM behavior (comprehensive, Vietnamese, markdown, citations) across all modes.
     """
     system = (
-        "Bạn là trợ lý AI trả lời câu hỏi dựa trên context được cung cấp. "
-        "Trả lời ngắn gọn, chính xác, dựa CHỈ trên nội dung context. "
-        "Nếu không có thông tin, nói rõ 'Không tìm thấy thông tin trong tài liệu.'"
+        "---Role---\n\n"
+        "You are an expert AI assistant specializing in synthesizing information from a provided "
+        "knowledge base. Your primary function is to answer user queries accurately by ONLY using "
+        "the information within the provided **Context**.\n\n"
+        "---Goal---\n\n"
+        "Generate a comprehensive, well-structured answer to the user query.\n"
+        "The answer must integrate relevant facts from the Document Chunks found in the **Context**.\n\n"
+        "---Instructions---\n\n"
+        "1. Step-by-Step Instruction:\n"
+        "  - Carefully determine the user's query intent to fully understand the user's information need.\n"
+        "  - Scrutinize `Document Chunks` in the **Context**. Identify and extract all pieces of "
+        "information that are directly relevant to answering the user query.\n"
+        "  - Weave the extracted facts into a coherent and logical response. Your own knowledge must "
+        "ONLY be used to formulate fluent sentences and connect ideas, NOT to introduce any external information.\n"
+        "  - Track the reference_id of the document chunk which directly support the facts presented "
+        "in the response. Correlate reference_id with the entries in the Context to generate citations.\n"
+        "  - Generate a **References** section at the end of the response. Each reference document "
+        "must directly support the facts presented in the response.\n"
+        "  - Do not generate anything after the reference section.\n\n"
+        "2. Content & Grounding:\n"
+        "  - Strictly adhere to the provided context from the **Context**; DO NOT invent, assume, "
+        "or infer any information not explicitly stated.\n"
+        "  - If the answer cannot be found in the **Context**, state that you do not have enough "
+        "information to answer. Do not attempt to guess.\n"
+        "  - Provide a DETAILED and COMPREHENSIVE answer. Each key concept MUST be explained "
+        "thoroughly with definitions, examples, and relationships to other concepts.\n"
+        "  - Use ALL relevant information from the context. Do not skip or summarize important details.\n"
+        "  - Aim for a thorough response of at least 500 words when the context provides sufficient information.\n\n"
+        "3. Formatting & Language:\n"
+        "  - The response MUST always be in Vietnamese.\n"
+        "  - The response MUST utilize Markdown formatting for enhanced clarity and structure "
+        "(e.g., headings, bold text, bullet points).\n\n"
+        "4. Image Markers:\n"
+        "  - The context may contain image markers in the format `[IMG_docname_N]`.\n"
+        "  - You MUST preserve these markers exactly as they appear in your response.\n"
+        "  - Do NOT remove, rename, translate, or modify any `[IMG_...]` marker.\n\n"
+        "5. References Section Format:\n"
+        "  - The References section should be under heading: `### References`\n"
+        "  - Reference list entries should adhere to the format: `* [n] Document Title`.\n"
+        "  - The Document Title in the citation must retain its original language.\n"
+        "  - Output each citation on an individual line.\n"
+        "  - Provide maximum of 5 most relevant citations.\n"
+        "  - Do not generate footnotes section or any comment after the references.\n\n"
+        "6. Reference Section Example:\n"
+        "```\n"
+        "### References\n\n"
+        "- [1] Document Title One\n"
+        "- [2] Document Title Two\n"
+        "- [3] Document Title Three\n"
+        "```"
     )
 
     context_parts = []

@@ -1,29 +1,53 @@
 #!/bin/bash
 # =============================================================================
-# LightRAG Benchmark Pipeline — 1-click runner
-# Run all 5 modes × queries, eval with BERTScore + RAGAS, generate report.
+# LightRAG Benchmark Pipeline — Per-Type Specialized Runner
+# Runs bench + BERTScore + RAGAS for a SINGLE query type, isolates each type
+# into its own results dir to make per-mode strengths visible.
 #
 # Usage:
-#   cd ~/LightRAG
-#   bash eval/run_all.sh                              # full pipeline (default queries)
-#   bash eval/run_all.sh --queries my_queries.json    # custom query file
-#   bash eval/run_all.sh --skip-bench                 # only re-eval existing results_raw.json
-#   bash eval/run_all.sh --skip-ragas                 # skip slow RAGAS step
-#   bash eval/run_all.sh --modes naive,hybrid         # subset of modes
+#   bash eval/run_all.sh --type factoid              # bench just factoid
+#   bash eval/run_all.sh --type relational
+#   bash eval/run_all.sh --type broad
+#   bash eval/run_all.sh --type aggregate
+#   bash eval/run_all.sh --queries path/to.json --type custom_name
+#
+# Run ALL 4 types sequentially:
+#   bash eval/run_per_type.sh
+#
+# Flags:
+#   --type NAME           type label (also output dir name) — REQUIRED
+#   --queries FILE        query JSON (default: eval/queries_{type}.json)
+#   --modes LIST          comma-separated modes (default: bm25,naive,hybrid,mix,graph)
+#   --skip-bench          reuse existing results_raw.json
+#   --skip-ragas          skip RAGAS (BERTScore only)
+#   --server-url URL      default http://localhost:9621
+#
+# Output:
+#   eval/results/{type}/results_raw.json
+#   eval/results/{type}/results_eval.json
+#   eval/results/{type}/results_chunks.json
+#   eval/results/{type}/results_ragas.json
+#   eval/results/{type}/report.md
 #
 # Prerequisites:
-#   - .env configured (see eval/.env.template)
-#   - LightRAG server running on port 9621 (background)
-#   - tlu_workspace/ synced (contains graph_chunk_entity_relation.graphml)
-#   - Python venv activated with deps installed
+#   - .env configured (POSTGRES, LLM_BINDING_*, COHERE_*, WORKING_DIR)
+#   - LightRAG server running on port 9621
+#   - tlu_workspace/ contains graph_chunk_entity_relation.graphml
+#   - Python venv activated
 # =============================================================================
 
-set -e  # exit on error
-set -u  # unset var = error
+set -e
+set -u
 set -o pipefail
 
-# ---- Config ----
-QUERIES_FILE="eval/benchmark_queries.json"
+# Auto-detect repo root
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_DIR"
+
+# ---- Defaults ----
+TYPE=""
+QUERIES_FILE=""
 MODES="bm25,naive,hybrid,mix,graph"
 SKIP_BENCH=false
 SKIP_RAGAS=false
@@ -32,21 +56,42 @@ SERVER_URL="http://localhost:9621"
 # ---- Parse args ----
 while [[ $# -gt 0 ]]; do
     case $1 in
+        --type)           TYPE="$2"; shift 2 ;;
         --queries)        QUERIES_FILE="$2"; shift 2 ;;
         --modes)          MODES="$2"; shift 2 ;;
         --skip-bench)     SKIP_BENCH=true; shift ;;
         --skip-ragas)     SKIP_RAGAS=true; shift ;;
         --server-url)     SERVER_URL="$2"; shift 2 ;;
+        -h|--help)
+            grep '^#' "$0" | head -40
+            exit 0 ;;
         *)                echo "Unknown arg: $1"; exit 1 ;;
     esac
 done
 
-# ---- Pre-flight checks ----
+# Validate --type
+if [ -z "$TYPE" ]; then
+    echo "[FATAL] --type is required. Use: --type factoid|relational|broad|aggregate"
+    exit 1
+fi
+
+# Default queries file based on type
+if [ -z "$QUERIES_FILE" ]; then
+    QUERIES_FILE="eval/queries_${TYPE}.json"
+fi
+
+# Output dir per type
+OUT_DIR="eval/results/${TYPE}"
+mkdir -p "$OUT_DIR"
+
+# ---- Banner ----
 echo "============================================================"
-echo "  LightRAG Benchmark Pipeline"
+echo "  LightRAG Per-Type Benchmark — Type: ${TYPE}"
 echo "============================================================"
+echo "REPO_DIR:    $REPO_DIR"
 echo "Queries:     $QUERIES_FILE"
 echo "Modes:       $MODES"
+echo "Output:      $OUT_DIR"
 echo "Server URL:  $SERVER_URL"
 echo "Skip bench:  $SKIP_BENCH"
 echo "Skip RAGAS:  $SKIP_RAGAS"
@@ -54,106 +99,112 @@ echo "Time:        $(date)"
 echo "============================================================"
 echo ""
 
-# Check venv
+# ---- Pre-flight ----
 if [ -z "${VIRTUAL_ENV:-}" ]; then
-    echo "[WARN] No venv activated. Activate with: source venv/bin/activate"
+    echo "[WARN] No venv activated."
 fi
 
-# Check queries file
 if [ ! -f "$QUERIES_FILE" ]; then
     echo "[FATAL] Queries file not found: $QUERIES_FILE"
+    echo "  Generate it with: python eval/gen_specialized_queries.py --type $TYPE"
     exit 1
 fi
 
-# Check .env
-if [ ! -f ".env" ]; then
-    echo "[FATAL] .env not found. Copy from eval/.env.template and fill in keys."
+if [ ! -f ".env" ] && [ ! -f "eval/.env" ]; then
+    echo "[FATAL] No .env found at repo root or eval/.env"
     exit 1
 fi
 
-# Check server alive (unless skipping bench)
 if [ "$SKIP_BENCH" = false ]; then
     if ! curl -s -o /dev/null --max-time 5 "$SERVER_URL/health"; then
         echo "[FATAL] LightRAG server not responding at $SERVER_URL"
-        echo "  Start it with:"
-        echo "    cd ~/LightRAG"
-        echo "    source venv/bin/activate"
-        echo "    nohup python -u -m lightrag.api.lightrag_server > server.log 2>&1 &"
         exit 1
     fi
     echo "[OK] Server alive at $SERVER_URL"
 fi
 
-# ---- Step 1: Run benchmark (queries × modes) ----
+# ---- Step 1: Run benchmark ----
+RESULTS_RAW="$OUT_DIR/results_raw.json"
 if [ "$SKIP_BENCH" = false ]; then
     echo ""
     echo "============================================================"
-    echo "  Step 1/4: Run benchmark — $MODES on $(jq '.queries | length' $QUERIES_FILE) queries"
+    echo "  Step 1/4: Run benchmark"
     echo "============================================================"
-    # NOTE: run_benchmark.py reads queries from eval/benchmark_queries.json (hardcoded)
-    # and writes to eval/results_raw.json. Override QUERIES_FILE by copying first.
-    if [ "$QUERIES_FILE" != "eval/benchmark_queries.json" ]; then
-        echo "[INFO] Copying $QUERIES_FILE -> eval/benchmark_queries.json (override)"
-        cp "$QUERIES_FILE" eval/benchmark_queries.json
-    fi
-    cd eval
-    python run_benchmark.py --modes "$MODES" 2>&1 | tee run_benchmark.log
-    cd ..
-    echo "[OK] Step 1 done."
+    python -u eval/run_benchmark.py \
+        --queries "$QUERIES_FILE" \
+        --modes "$MODES" \
+        --out "$RESULTS_RAW" \
+        --server-url "$SERVER_URL" \
+        --resume \
+        2>&1 | tee "$OUT_DIR/run_benchmark.log"
+    echo "[OK] Step 1 done → $RESULTS_RAW"
 else
-    echo "[SKIP] Step 1 (benchmark) skipped."
+    echo "[SKIP] Step 1 (benchmark)"
 fi
 
-# ---- Step 2: BERTScore eval ----
-echo ""
-echo "============================================================"
-echo "  Step 2/4: BERTScore evaluation"
-echo "============================================================"
-python eval/evaluate_benchmark.py 2>&1 | tee eval/evaluate_benchmark.log
-echo "[OK] Step 2 done. → eval/results_eval.json + eval/report.md"
+# ---- Step 2: BERTScore (only for factoid; other types use pairwise instead) ----
+if [ "$TYPE" = "factoid" ]; then
+    echo ""
+    echo "============================================================"
+    echo "  Step 2/4: BERTScore evaluation (factoid only)"
+    echo "============================================================"
+    python -u eval/evaluate_benchmark.py \
+        --queries "$QUERIES_FILE" \
+        --raw "$RESULTS_RAW" \
+        --out-eval "$OUT_DIR/results_eval.json" \
+        --out-report "$OUT_DIR/report.md" \
+        2>&1 | tee "$OUT_DIR/evaluate_benchmark.log"
+    echo "[OK] Step 2 done → $OUT_DIR/results_eval.json + report.md"
+else
+    echo ""
+    echo "[SKIP] Step 2 BERTScore for type=$TYPE (use pairwise judge later)"
+fi
 
-# ---- Step 3: Fetch chunks for RAGAS ----
+# ---- Step 3: RAGAS ----
 if [ "$SKIP_RAGAS" = false ]; then
     echo ""
     echo "============================================================"
-    echo "  Step 3a/4: Fetch chunks per (query, mode) for RAGAS"
+    echo "  Step 3a: Fetch chunks for RAGAS"
     echo "============================================================"
-    python eval/fetch_chunks.py 2>&1 | tee eval/fetch_chunks.log
-    echo "[OK] Step 3a done. → eval/results_chunks.json"
+    python -u eval/fetch_chunks.py \
+        --queries "$QUERIES_FILE" \
+        --eval "$OUT_DIR/results_eval.json" \
+        --out "$OUT_DIR/results_chunks.json" \
+        --server-url "$SERVER_URL" \
+        2>&1 | tee "$OUT_DIR/fetch_chunks.log"
 
-    # ---- Step 4: RAGAS eval ----
     echo ""
     echo "============================================================"
-    echo "  Step 3b/4: RAGAS 4 metrics (faithfulness, ans_relevancy, ans_correctness, context_precision)"
+    echo "  Step 3b: RAGAS 4 metrics"
     echo "============================================================"
-    python eval/evaluate_ragas.py 2>&1 | tee eval/evaluate_ragas.log
-    echo "[OK] Step 3b done. → eval/results_ragas.json"
+    python -u eval/evaluate_ragas.py \
+        --metric faithfulness,answer_relevancy \
+        --queries "$QUERIES_FILE" \
+        --eval "$OUT_DIR/results_eval.json" \
+        --chunks "$OUT_DIR/results_chunks.json" \
+        --out "$OUT_DIR/results_ragas.json" \
+        2>&1 | tee "$OUT_DIR/evaluate_ragas.log"
 
-    # ---- Step 5: Retry failed RAGAS entries (faithfulness only — most failure-prone) ----
     echo ""
     echo "============================================================"
-    echo "  Step 3c/4: Retry failed RAGAS entries (faithfulness)"
+    echo "  Step 3c: Retry failed RAGAS faithfulness"
     echo "============================================================"
-    python eval/retry_failed_ragas.py --metric faithfulness 2>&1 | tee eval/retry_faithfulness.log
-    echo "[OK] Step 3c done."
+    python -u eval/retry_failed_ragas.py \
+        --metric faithfulness \
+        --queries "$QUERIES_FILE" \
+        --eval "$OUT_DIR/results_eval.json" \
+        --chunks "$OUT_DIR/results_chunks.json" \
+        --ragas "$OUT_DIR/results_ragas.json" \
+        2>&1 | tee "$OUT_DIR/retry_faithfulness.log"
 else
-    echo "[SKIP] Step 3 (RAGAS) skipped."
+    echo "[SKIP] Step 3 (RAGAS)"
 fi
 
 # ---- Summary ----
 echo ""
 echo "============================================================"
-echo "  Pipeline complete @ $(date)"
+echo "  Complete: ${TYPE} @ $(date)"
 echo "============================================================"
+ls -lh "$OUT_DIR/"*.json "$OUT_DIR/"*.md 2>/dev/null || true
 echo ""
-echo "Output files:"
-ls -lh eval/results_*.json eval/report.md 2>/dev/null || true
-echo ""
-echo "Logs:"
-ls -lh eval/*.log 2>/dev/null || true
-echo ""
-echo "Next steps:"
-echo "  1. Review eval/report.md"
-echo "  2. scp results back to local:"
-echo "     scp tts@<server>:~/LightRAG/eval/results_*.json ./"
-echo "     scp tts@<server>:~/LightRAG/eval/report.md ./"
+echo "Next: cat $OUT_DIR/report.md"

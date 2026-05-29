@@ -33,13 +33,13 @@ QUERIES_FILE = HERE / "benchmark_queries.json"
 RESULTS_FILE = HERE / "results_raw.json"
 
 SERVER_URL = "http://localhost:9621"
-ENDPOINT = f"{SERVER_URL}/query"
+ENDPOINT = f"{SERVER_URL}/query"  # rebuilt in main() if --server-url passed
 DEFAULT_MODES = ["naive", "hybrid", "mix", "graph", "bm25"]
 SERVER_MODES = {"naive", "hybrid", "mix", "graph"}
 LOCAL_MODES = {"bm25"}
 BM25_TOP_K = 10
 THROTTLE_SEC = 2.0
-TIMEOUT_SEC = 180  # LLM can be slow on cold mode
+TIMEOUT_SEC = 300  # multihop queries need more time for heavy modes
 
 # Lazy-loaded BM25 index (only when bm25 mode used)
 _bm25_index = None
@@ -54,21 +54,25 @@ def get_bm25_index():
     return _bm25_index
 
 
-def load_queries():
-    with open(QUERIES_FILE, "r", encoding="utf-8") as f:
+def load_queries(path=None):
+    p = Path(path) if path else QUERIES_FILE
+    with open(p, "r", encoding="utf-8") as f:
         data = json.load(f)
     return data["queries"]
 
 
-def load_results():
-    if RESULTS_FILE.exists():
-        with open(RESULTS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {"meta": {}, "results": []}
+def load_results(path=None):
+    p = Path(path) if path else RESULTS_FILE
+    if not p.exists():
+        return {"meta": {}, "results": []}
+    with open(p, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 
-def save_results(data):
-    with open(RESULTS_FILE, "w", encoding="utf-8") as f:
+def save_results(data, path=None):
+    p = Path(path) if path else RESULTS_FILE
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(p, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
@@ -161,14 +165,25 @@ def main():
     parser.add_argument(
         "--limit", type=int, default=None, help="Limit number of queries (debug)"
     )
+    # CLI overrides for paths (used by run_all.sh per-type)
+    parser.add_argument("--queries", default=None, help="Queries JSON path override")
+    parser.add_argument("--out", default=None, help="Output results_raw.json path")
+    parser.add_argument("--server-url", default=None, help="LightRAG server URL")
     args = parser.parse_args()
 
+    # Apply CLI overrides
+    global ENDPOINT, RESULTS_FILE
+    if args.server_url:
+        ENDPOINT = f"{args.server_url.rstrip('/')}/query"
+    if args.out:
+        RESULTS_FILE = Path(args.out)
+
     modes = [m.strip() for m in args.modes.split(",") if m.strip()]
-    queries = load_queries()
+    queries = load_queries(args.queries)
     if args.limit:
         queries = queries[: args.limit]
 
-    data = load_results() if args.resume else {"meta": {}, "results": []}
+    data = load_results(args.out) if args.resume else {"meta": {}, "results": []}
     data["meta"] = {
         "started_at": datetime.now().isoformat(),
         "modes": modes,
@@ -191,6 +206,18 @@ def main():
         f"[BENCHMARK] Estimated wall time: ~{total * (args.throttle + 8) / 60:.1f} min\n"
     )
 
+    # Warm-up: load model into VRAM + BM25 index into memory before timing starts
+    server_modes = [m for m in modes if m in SERVER_MODES]
+    if server_modes:
+        print("[WARMUP] Sending warm-up query to server (load model into VRAM)...")
+        call_query_server("xin chào", server_modes[0])
+        print("[WARMUP] Server done.")
+    if "bm25" in modes:
+        print("[WARMUP] Loading BM25 index...")
+        get_bm25_index()
+        print("[WARMUP] BM25 done.")
+    print()
+
     for run_idx in range(1, args.runs + 1):
         for q in queries:
             for mode in modes:
@@ -208,7 +235,8 @@ def main():
                 entry = {
                     "query_id": q["id"],
                     "type": q["type"],
-                    "topic": q["topic"],
+                    "topic": q.get("topic", q.get("subject", "")),
+                    "subject": q.get("subject", ""),
                     "mode": mode,
                     "run": run_idx,
                     "query": q["query"],

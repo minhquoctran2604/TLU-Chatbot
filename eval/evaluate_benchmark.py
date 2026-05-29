@@ -44,24 +44,29 @@ def clean_response(text: str) -> str:
     )
     # Strip [N] reference numbers like [1], [2]
     text = re.sub(r"\[\d+\]", "", text)
+    # Strip [reference_id: N] markers injected by server
+    text = re.sub(r"\[reference_id:\s*\d+\]", "", text, flags=re.IGNORECASE)
     # Collapse whitespace
     text = re.sub(r"\s+", " ", text).strip()
     return text
 
 HERE = Path(__file__).parent
+# Defaults (can override via CLI)
 QUERIES_FILE = HERE / "benchmark_queries.json"
 RESULTS_FILE = HERE / "results_raw.json"
 EVAL_FILE = HERE / "results_eval.json"
 REPORT_FILE = HERE / "report.md"
 
 
-def load_queries():
-    with open(QUERIES_FILE, "r", encoding="utf-8") as f:
+def load_queries(path=None):
+    p = Path(path) if path else QUERIES_FILE
+    with open(p, "r", encoding="utf-8") as f:
         return {q["id"]: q for q in json.load(f)["queries"]}
 
 
-def load_results():
-    with open(RESULTS_FILE, "r", encoding="utf-8") as f:
+def load_results(path=None):
+    p = Path(path) if path else RESULTS_FILE
+    with open(p, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -105,25 +110,45 @@ def median_per_query_mode(entries: list) -> list:
 
 
 def score_with_bertscore(
-    cands: list, refs: list, model_type: str, lang: str = "vi"
+    cands: list, refs: list, model_type: str, lang: str = "vi", device: str = None
 ) -> tuple:
     """Return (P_list, R_list, F1_list). Lazy import to avoid heavy load when only viewing."""
     from bert_score import score as bert_score
     import torch
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    if not device:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
     print(
         f"[BERTScore] model={model_type} lang={lang} device={device} | scoring {len(cands)} pairs..."
     )
-    P, R, F1 = bert_score(
-        cands,
-        refs,
-        model_type=model_type,
-        lang=lang,
-        device=device,
-        verbose=False,
-        rescale_with_baseline=False,  # raw scores, more interpretable
-    )
+    try:
+        P, R, F1 = bert_score(
+            cands,
+            refs,
+            model_type=model_type,
+            lang=lang,
+            device=device,
+            verbose=False,
+            rescale_with_baseline=False,  # raw scores, more interpretable
+        )
+    except Exception as e:
+        if device == "cuda":
+            print(f"\n[WARNING] BERTScore CUDA failed ({e}). Falling back to CPU...")
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            device = "cpu"
+            print(f"[BERTScore] Retrying on device={device}...")
+            P, R, F1 = bert_score(
+                cands,
+                refs,
+                model_type=model_type,
+                lang=lang,
+                device=device,
+                verbose=False,
+                rescale_with_baseline=False,
+            )
+        else:
+            raise e
     return P.tolist(), R.tolist(), F1.tolist()
 
 
@@ -140,18 +165,25 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default="xlm-roberta-large", help="BERTScore model")
     parser.add_argument("--lang", default="vi", help="Language code")
-    parser.add_argument(
-        "--bootstrap", type=int, default=1000, help="Bootstrap CI resamples"
-    )
-    parser.add_argument(
-        "--skip-bertscore",
-        action="store_true",
-        help="Skip scoring, just aggregate existing eval file",
-    )
+    parser.add_argument("--bootstrap", type=int, default=1000, help="Bootstrap CI resamples")
+    parser.add_argument("--skip-bertscore", action="store_true", help="Skip scoring")
+    parser.add_argument("--device", default=None, help="Force torch device (e.g. cpu, cuda)")
+    # CLI overrides for paths (used by run_all.sh per-type mode)
+    parser.add_argument("--queries", default=None, help="Queries JSON path")
+    parser.add_argument("--raw", default=None, help="results_raw.json path")
+    parser.add_argument("--out-eval", default=None, help="Output results_eval.json path")
+    parser.add_argument("--out-report", default=None, help="Output report.md path")
     args = parser.parse_args()
 
-    queries = load_queries()
-    raw = load_results()
+    # Override module-level defaults
+    global EVAL_FILE, REPORT_FILE
+    if args.out_eval:
+        EVAL_FILE = Path(args.out_eval)
+    if args.out_report:
+        REPORT_FILE = Path(args.out_report)
+
+    queries = load_queries(args.queries)
+    raw = load_results(args.raw)
     entries = raw["results"]
     print(f"[LOAD] {len(entries)} raw entries | {len(queries)} queries in benchmark")
 
@@ -164,7 +196,7 @@ def main():
             f"[VALID] {len(valid)}/{len(entries)} entries scoreable (non-empty, no error)"
         )
 
-        P, R, F1 = score_with_bertscore(cands, refs, args.model, args.lang)
+        P, R, F1 = score_with_bertscore(cands, refs, args.model, args.lang, args.device)
         for e, p, r, f1 in zip(valid, P, R, F1):
             e["bertscore_p"] = round(p, 4)
             e["bertscore_r"] = round(r, 4)

@@ -20,6 +20,7 @@ import re
 import sys
 import time
 from pathlib import Path
+from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent.parent / ".env")
@@ -39,8 +40,10 @@ DEFAULT_MODES = ["naive", "hybrid", "mix", "graph", "bm25"]
 TIMEOUT = 180
 
 
-def load_queries():
-    with open(QUERIES_FILE, encoding="utf-8") as f:
+def load_queries(path=None):
+    from pathlib import Path as _P
+    p = _P(path) if path else QUERIES_FILE
+    with open(p, encoding="utf-8") as f:
         return json.load(f)["queries"]
 
 
@@ -80,10 +83,21 @@ def main():
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--throttle", type=float, default=2.0)
     parser.add_argument("--resume", action="store_true", help="Skip existing entries")
+    # Path overrides
+    parser.add_argument("--queries", default=None, help="Queries JSON path")
+    parser.add_argument("--eval", default=None, help="results_eval.json path (for query/mode list)")
+    parser.add_argument("--out", default=None, help="Output results_chunks.json path")
+    parser.add_argument("--server-url", default=None, help="LightRAG server URL")
     args = parser.parse_args()
 
+    global ENDPOINT, CHUNKS_FILE
+    if args.server_url:
+        ENDPOINT = f"{args.server_url.rstrip('/')}/query"
+    if args.out:
+        CHUNKS_FILE = Path(args.out)
+
     modes = [m.strip() for m in args.modes.split(",") if m.strip()]
-    queries = load_queries()
+    queries = load_queries(args.queries)
     if args.limit:
         queries = queries[: args.limit]
 

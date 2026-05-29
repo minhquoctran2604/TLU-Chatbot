@@ -12,10 +12,14 @@
 set -e
 set -u
 
-REPO_DIR="$HOME/LightRAG"
+# Auto-detect repo root (script may live in eval/ subfolder)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 VENV_DIR="$REPO_DIR/venv"
 HF_CACHE="$HOME/hf_cache"
 WORKSPACE_DIR="$HOME/tlu_workspace"
+
+echo "[setup] Detected REPO_DIR=$REPO_DIR"
 
 echo "============================================================"
 echo "  LightRAG Server Setup"

@@ -26,7 +26,12 @@ sys.path.insert(0, str(ROOT))
 
 from dotenv import load_dotenv
 
-load_dotenv(ROOT / ".env")
+# Try loading from local eval/.env first, then fallback to root .env
+eval_env = ROOT / "eval" / ".env"
+if eval_env.exists():
+    load_dotenv(eval_env)
+else:
+    load_dotenv(ROOT / ".env")
 
 import asyncpg
 
@@ -45,9 +50,10 @@ PG_DSN = (
 )
 WORKSPACE = os.environ.get("POSTGRES_WORKSPACE", "lightrag")
 
-# Match server config (.env)
-LLM_HOST = os.environ["LLM_BINDING_HOST"]
-LLM_KEY = os.environ["LLM_BINDING_API_KEY"]
+# Backfill uses 9router pool (smart models for extraction).
+# Reads ROUTER_* so it works when server's LLM_BINDING_* points to Ollama.
+LLM_HOST = os.environ.get("ROUTER_HOST") or os.environ["LLM_BINDING_HOST"]
+LLM_KEY = os.environ.get("ROUTER_API_KEY") or os.environ["LLM_BINDING_API_KEY"]
 EMBED_MODEL = os.environ["EMBEDDING_MODEL"]
 EMBED_DIM = int(os.environ.get("EMBEDDING_DIM", "640"))
 

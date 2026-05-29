@@ -46,6 +46,7 @@ def clean_response(text: str) -> str:
         flags=re.IGNORECASE | re.MULTILINE,
     )
     text = re.sub(r"\[\d+\]", "", text)
+    text = re.sub(r"\[reference_id:\s*\d+\]", "", text, flags=re.IGNORECASE)
     text = re.sub(r"\s+", " ", text).strip()
     return text
 
@@ -68,47 +69,57 @@ CHUNKS_FILE = HERE / "results_chunks.json"
 RAGAS_FILE = HERE / "results_ragas.json"
 
 
-def load_queries():
-    with open(QUERIES_FILE, encoding="utf-8") as f:
+def load_queries(path=None):
+    p = Path(path) if path else QUERIES_FILE
+    with open(p, encoding="utf-8") as f:
         return {q["id"]: q for q in json.load(f)["queries"]}
 
 
-def load_results():
-    if not RESULTS_FILE.exists():
-        print(f"[ERR] {RESULTS_FILE} missing. Run evaluate_benchmark.py first.")
+def load_results(path=None):
+    p = Path(path) if path else RESULTS_FILE
+    if not p.exists():
+        print(f"[ERR] {p} missing. Run evaluate_benchmark.py first.")
         sys.exit(1)
-    with open(RESULTS_FILE, encoding="utf-8") as f:
+    with open(p, encoding="utf-8") as f:
         return json.load(f)
 
 
-def load_chunks():
+def load_chunks(path=None):
     """Load chunks lookup {(query_id, mode): [chunk_text, ...]}."""
-    if not CHUNKS_FILE.exists():
+    p = Path(path) if path else CHUNKS_FILE
+    if not p.exists():
         return None
-    with open(CHUNKS_FILE, encoding="utf-8") as f:
+    with open(p, encoding="utf-8") as f:
         data = json.load(f)
     return {(c["query_id"], c["mode"]): c["chunks"] for c in data}
 
 
-JUDGE_FAILOVER_MODELS = [
-    "gh/gpt-4o-mini",
-    "gc/gemini-2.5-flash",
-    "kc/stepfun/step-3.5-flash:free",
-]
+_env_failover = os.getenv("ROUTER_FAILOVER_MODELS", "")
+JUDGE_FAILOVER_MODELS = (
+    [m.strip() for m in _env_failover.split(",") if m.strip()]
+    if _env_failover
+    else [
+        "gh/gpt-4o-mini",
+        "gc/gemini-2.5-flash",
+        "kc/stepfun/step-3.5-flash:free",
+    ]
+)
 
 
 def make_judge_llm(model=None):
     """Use 9router proxy (OpenAI-compatible) with failover."""
     from langchain_openai import ChatOpenAI
-    base_url = os.getenv("LLM_BINDING_HOST", "http://localhost:20128/v1")
-    api_key = os.getenv("LLM_BINDING_API_KEY", "")
+    # ROUTER_* is for modules that need smart models via 9router proxy,
+    # independent of the server's LLM_BINDING_* (which may point to Ollama for benchmark).
+    base_url = os.getenv("ROUTER_HOST", "http://localhost:20128/v1")
+    api_key = os.getenv("ROUTER_API_KEY", "")
     m = model or os.getenv("JUDGE_MODEL", JUDGE_FAILOVER_MODELS[0])
     return ChatOpenAI(
         model=m,
         api_key=api_key,
         base_url=base_url,
         temperature=0.0,
-        timeout=120,
+        timeout=30,
     )
 
 
@@ -188,12 +199,17 @@ def get_metric_pool(metric_class, need_embeddings: bool = False):
     return pool
 
 
-def score_with_fallback(metric_pool, sample, tag):
-    """Try each metric (different LLM) until success. Return (score, model_used, error)."""
+CONCURRENCY = int(os.getenv("RAGAS_CONCURRENCY", "5"))
+
+
+async def score_async(metric_pool, sample, entry_idx: int):
+    """Round-robin model assignment + async fallback. Returns (score, model_used, error)."""
+    n = len(metric_pool)
     last_err = None
-    for model_name, metric in metric_pool:
+    for k in range(n):
+        model_name, metric = metric_pool[(entry_idx + k) % n]
         try:
-            score = asyncio.run(metric.single_turn_ascore(sample))
+            score = await metric.single_turn_ascore(sample)
             return float(score), model_name, None
         except Exception as ex:
             last_err = ex
@@ -201,24 +217,40 @@ def score_with_fallback(metric_pool, sample, tag):
     return None, None, f"{type(last_err).__name__}: {str(last_err)[:120]}"
 
 
+async def run_parallel(entries, build_sample_fn, metric_pool, label: str):
+    """Run metric for all entries in parallel with semaphore-limited concurrency."""
+    sem = asyncio.Semaphore(CONCURRENCY)
+    total = len(entries)
+    results = [None] * total
+
+    async def score_one(i, e):
+        sample = build_sample_fn(i, e)
+        if sample is None:
+            results[i] = {"entry_idx": i, "score": None, "reason": "empty"}
+            return
+        async with sem:
+            sc, used, err = await score_async(metric_pool, sample, i)
+        results[i] = {"entry_idx": i, "score": sc, "reason": err, "judge_model": used}
+        msg = f"score={sc:.3f} via={used}" if sc is not None else f"ALL_FAIL: {err}"
+        print(f"  [{i+1}/{total}] {e['query_id']}/{e['mode']} {msg}")
+
+    await asyncio.gather(*[score_one(i, e) for i, e in enumerate(entries)])
+    return results
+
+
 def run_answer_relevancy(entries, queries, chunks_map, throttle):
     from ragas.dataset_schema import SingleTurnSample
     from ragas.metrics import ResponseRelevancy
 
     metric_pool = get_metric_pool(ResponseRelevancy, need_embeddings=True)
-    print(f"[POOL] {[m for m, _ in metric_pool]}")
-    scores = []
-    for i, e in enumerate(entries):
+    print(f"[POOL] {[m for m, _ in metric_pool]} | concurrency={CONCURRENCY}")
+
+    def build(i, e):
         if e.get("error") or not e.get("response"):
-            scores.append({"entry_idx": i, "score": None, "reason": "empty"})
-            continue
-        sample = SingleTurnSample(user_input=e["query"], response=clean_response(e["response"]))
-        sc, used, err = score_with_fallback(metric_pool, sample, f"{e['query_id']}/{e['mode']}")
-        scores.append({"entry_idx": i, "score": sc, "reason": err, "judge_model": used})
-        msg = f"score={sc:.3f} via={used}" if sc is not None else f"ALL_FAIL: {err}"
-        print(f"  [{i+1}/{len(entries)}] {e['query_id']}/{e['mode']} {msg}")
-        time.sleep(throttle)
-    return scores
+            return None
+        return SingleTurnSample(user_input=e["query"], response=clean_response(e["response"]))
+
+    return asyncio.run(run_parallel(entries, build, metric_pool, "answer_relevancy"))
 
 
 def run_answer_correctness(entries, queries, chunks_map, throttle):
@@ -226,92 +258,71 @@ def run_answer_correctness(entries, queries, chunks_map, throttle):
     from ragas.metrics import AnswerCorrectness
 
     metric_pool = get_metric_pool(AnswerCorrectness, need_embeddings=True)
-    print(f"[POOL] {[m for m, _ in metric_pool]}")
-    scores = []
-    for i, e in enumerate(entries):
+    print(f"[POOL] {[m for m, _ in metric_pool]} | concurrency={CONCURRENCY}")
+
+    def build(i, e):
         if e.get("error") or not e.get("response"):
-            scores.append({"entry_idx": i, "score": None, "reason": "empty"})
-            continue
-        reference = queries[e["query_id"]].get("reference", "")
-        sample = SingleTurnSample(
+            return None
+        return SingleTurnSample(
             user_input=e["query"],
             response=clean_response(e["response"]),
-            reference=reference,
+            reference=queries[e["query_id"]].get("reference", ""),
         )
-        sc, used, err = score_with_fallback(metric_pool, sample, f"{e['query_id']}/{e['mode']}")
-        scores.append({"entry_idx": i, "score": sc, "reason": err, "judge_model": used})
-        msg = f"score={sc:.3f} via={used}" if sc is not None else f"ALL_FAIL: {err}"
-        print(f"  [{i+1}/{len(entries)}] {e['query_id']}/{e['mode']} {msg}")
-        time.sleep(throttle)
-    return scores
+
+    return asyncio.run(run_parallel(entries, build, metric_pool, "answer_correctness"))
 
 
 def run_faithfulness(entries, queries, chunks_map, throttle):
     if chunks_map is None:
-        print("[ERR] faithfulness needs retrieved chunks.")
-        print("[ERR] Run: python fetch_chunks.py  → generates results_chunks.json")
+        print("[ERR] faithfulness needs retrieved chunks. Run fetch_chunks.py first.")
         sys.exit(1)
 
     from ragas.dataset_schema import SingleTurnSample
     from ragas.metrics import Faithfulness
 
     metric_pool = get_metric_pool(Faithfulness, need_embeddings=False)
-    print(f"[POOL] {[m for m, _ in metric_pool]}")
-    scores = []
-    for i, e in enumerate(entries):
+    print(f"[POOL] {[m for m, _ in metric_pool]} | concurrency={CONCURRENCY}")
+
+    def build(i, e):
         if e.get("error") or not e.get("response"):
-            scores.append({"entry_idx": i, "score": None, "reason": "empty"})
-            continue
+            return None
         chunks = chunks_map.get((e["query_id"], e["mode"]), [])
         if not chunks:
-            scores.append({"entry_idx": i, "score": None, "reason": "no_chunks"})
-            continue
-        sample = SingleTurnSample(
+            return None
+        return SingleTurnSample(
             user_input=e["query"],
             response=clean_response(e["response"]),
             retrieved_contexts=clean_chunks(chunks),
         )
-        sc, used, err = score_with_fallback(metric_pool, sample, f"{e['query_id']}/{e['mode']}")
-        scores.append({"entry_idx": i, "score": sc, "reason": err, "judge_model": used})
-        msg = f"score={sc:.3f} via={used}" if sc is not None else f"ALL_FAIL: {err}"
-        print(f"  [{i+1}/{len(entries)}] {e['query_id']}/{e['mode']} {msg}")
-        time.sleep(throttle)
-    return scores
+
+    return asyncio.run(run_parallel(entries, build, metric_pool, "faithfulness"))
 
 
 def run_context_precision(entries, queries, chunks_map, throttle):
     if chunks_map is None:
-        print("[ERR] context_precision needs retrieved chunks.")
-        print("[ERR] Run: python fetch_chunks.py")
+        print("[ERR] context_precision needs retrieved chunks. Run fetch_chunks.py first.")
         sys.exit(1)
 
     from ragas.dataset_schema import SingleTurnSample
     from ragas.metrics import LLMContextPrecisionWithReference
 
     metric_pool = get_metric_pool(LLMContextPrecisionWithReference, need_embeddings=False)
-    print(f"[POOL] {[m for m, _ in metric_pool]}")
-    scores = []
-    for i, e in enumerate(entries):
+    print(f"[POOL] {[m for m, _ in metric_pool]} | concurrency={CONCURRENCY}")
+
+    def build(i, e):
         if e.get("error") or not e.get("response"):
-            scores.append({"entry_idx": i, "score": None, "reason": "empty"})
-            continue
+            return None
         chunks = chunks_map.get((e["query_id"], e["mode"]), [])
         if not chunks:
-            scores.append({"entry_idx": i, "score": None, "reason": "no_chunks"})
-            continue
-        reference = queries[e["query_id"]].get("reference", "")
-        sample = SingleTurnSample(
+            return None
+        return SingleTurnSample(
             user_input=e["query"],
             response=clean_response(e["response"]),
-            reference=reference,
+            reference=queries[e["query_id"]].get("reference", ""),
             retrieved_contexts=clean_chunks(chunks),
         )
-        sc, used, err = score_with_fallback(metric_pool, sample, f"{e['query_id']}/{e['mode']}")
-        scores.append({"entry_idx": i, "score": sc, "reason": err, "judge_model": used})
-        msg = f"score={sc:.3f} via={used}" if sc is not None else f"ALL_FAIL: {err}"
-        print(f"  [{i+1}/{len(entries)}] {e['query_id']}/{e['mode']} {msg}")
-        time.sleep(throttle)
-    return scores
+
+    return asyncio.run(run_parallel(entries, build, metric_pool, "context_precision"))
 
 
 METRIC_FNS = {
@@ -356,33 +367,50 @@ def save_result(metric_name, scores, aggr):
 
 
 def main():
+    global RAGAS_FILE, CONCURRENCY
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--metric",
-        choices=list(METRIC_FNS.keys()) + ["all"],
-        default="answer_relevancy",
+        default="faithfulness,answer_relevancy",
+        help="Comma-separated metrics or 'all'. Default: faithfulness,answer_relevancy",
     )
+    parser.add_argument("--concurrency", type=int, default=None,
+                        help=f"Parallel workers (default: RAGAS_CONCURRENCY env or {CONCURRENCY})")
     parser.add_argument("--throttle", type=float, default=1.0)
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--retry-failed", action="store_true", help="Only retry entries with score=None from previous run")
+    # Path overrides for per-type bench
+    parser.add_argument("--queries", default=None, help="Queries JSON path")
+    parser.add_argument("--eval", default=None, help="results_eval.json path")
+    parser.add_argument("--chunks", default=None, help="results_chunks.json path")
+    parser.add_argument("--out", default=None, help="results_ragas.json output path")
     args = parser.parse_args()
 
-    queries = load_queries()
-    data = load_results()
+    if args.out:
+        RAGAS_FILE = Path(args.out)
+
+    queries = load_queries(args.queries)
+    data = load_results(args.eval)
     entries = data["results"]
     if args.limit:
         entries = entries[: args.limit]
 
-    chunks_map = load_chunks()
+    chunks_map = load_chunks(args.chunks)
     if chunks_map:
         print(f"[CHUNKS] Loaded {len(chunks_map)} (query_id, mode) chunk sets")
     else:
         print("[CHUNKS] None — faithfulness/context_precision will fail. Run fetch_chunks.py.")
 
-    print(f"[LOAD] {len(entries)} entries")
-    print(f"[THROTTLE] {args.throttle}s")
+    if args.concurrency:
+        CONCURRENCY = args.concurrency
 
-    metrics_to_run = list(METRIC_FNS.keys()) if args.metric == "all" else [args.metric]
+    print(f"[LOAD] {len(entries)} entries")
+    print(f"[CONCURRENCY] {CONCURRENCY}")
+
+    if args.metric == "all":
+        metrics_to_run = list(METRIC_FNS.keys())
+    else:
+        metrics_to_run = [m.strip() for m in args.metric.split(",") if m.strip()]
     for m in metrics_to_run:
         print(f"\n[METRIC] {m}")
         fn = METRIC_FNS[m]
