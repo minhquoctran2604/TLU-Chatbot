@@ -533,6 +533,9 @@ async def _handle_single_entity_extraction(
             )
             return None
 
+        # Normalize to lowercase for deduplication
+        entity_name = entity_name.strip().lower()
+
         # Process entity type with same cleaning pipeline
         entity_type = sanitize_and_normalize_extracted_text(
             record_attributes[2], remove_inner_quotes=True
@@ -615,6 +618,10 @@ async def _handle_single_relationship_extraction(
                 f"Empty target entity found after sanitization. Original: '{record_attributes[2]}'"
             )
             return None
+
+        # Normalize to lowercase for deduplication
+        source = source.strip().lower()
+        target = target.strip().lower()
 
         if source == target:
             logger.debug(
@@ -3768,7 +3775,10 @@ async def _perform_graph_ego_walk(
         logger.info("[graph_ego_walk] no seed entities matched")
         return [], []
 
-    seed_names = [hit["entity_name"] for hit in seed_hits if hit.get("entity_name")]
+    seed_names = [
+        hit["entity_name"].strip().lower()
+        for hit in seed_hits if hit.get("entity_name")
+    ]
     if not seed_names:
         return [], []
 
