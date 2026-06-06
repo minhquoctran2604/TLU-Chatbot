@@ -19,9 +19,9 @@ class QueryRequest(BaseModel):
         description="The query text",
     )
 
-    mode: Literal["naive", "hybrid", "mix", "stat", "graph"] = Field(
+    mode: Literal["naive", "hybrid", "mix", "stat", "graph", "bypass"] = Field(
         default="naive",
-        description="Query mode",
+        description="Query mode: naive, hybrid, mix, stat, graph, bypass",
     )
 
     only_need_context: Optional[bool] = Field(
@@ -330,12 +330,12 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
         to provide intelligent responses based on your knowledge base.
 
         **Query Modes:**
-        - **local**: Focuses on specific entities and their direct relationships
-        - **global**: Analyzes broader patterns and relationships across the knowledge graph
-        - **hybrid**: Combines local and global approaches for comprehensive results
         - **naive**: Simple vector similarity search without knowledge graph
+        - **hybrid**: Combines entity and relation VDB searches for comprehensive results
         - **mix**: Integrates knowledge graph retrieval with vector search (recommended)
-        - **bypass**: Direct LLM query without knowledge retrieval
+        - **stat**: Returns statistical overview of the knowledge graph
+        - **graph**: Ego-walk traversal from seed entities in the knowledge graph
+        - **bypass**: Direct LLM query without any knowledge retrieval
 
         conversation_history parameteris sent to LLM only, does not affect retrieval results.
 
@@ -555,12 +555,12 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
         - **Headers**: Includes cache control and connection management
 
         **Query Modes (same as /query endpoint)**
-        - **local**: Entity-focused retrieval with direct relationships
-        - **global**: Pattern analysis across the knowledge graph
-        - **hybrid**: Combined local and global strategies
         - **naive**: Vector similarity search only
+        - **hybrid**: Combines entity and relation VDB searches for comprehensive results
         - **mix**: Integrated knowledge graph + vector retrieval (recommended)
-        - **bypass**: Direct LLM query without knowledge retrieval
+        - **stat**: Returns statistical overview of the knowledge graph
+        - **graph**: Ego-walk traversal from seed entities in the knowledge graph
+        - **bypass**: Direct LLM query without any knowledge retrieval
 
         conversation_history parameteris sent to LLM only, does not affect retrieval results.
 
@@ -1053,11 +1053,11 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
         - Compatible with all query modes and parameters
 
         **Query Mode Behaviors:**
-        - **local**: Returns entities and their direct relationships + related chunks
-        - **global**: Returns relationship patterns across the knowledge graph
-        - **hybrid**: Combines local and global retrieval strategies
         - **naive**: Returns only vector-retrieved text chunks (no knowledge graph)
+        - **hybrid**: Combines entity and relation VDB searches + related chunks
         - **mix**: Integrates knowledge graph data with vector-retrieved chunks
+        - **stat**: Returns statistical overview of the knowledge graph
+        - **graph**: Ego-walk from seed entities returning graph-adjacent chunks
         - **bypass**: Returns empty data arrays (used for direct LLM queries)
 
         **Data Structure:**
@@ -1069,20 +1069,20 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
 
         **Usage Examples:**
 
-        Analyze entity relationships:
+        Graph-based entity retrieval:
         ```json
         {
             "query": "machine learning algorithms",
-            "mode": "local",
+            "mode": "mix",
             "top_k": 10
         }
         ```
 
-        Explore global patterns:
+        Explore graph patterns:
         ```json
         {
             "query": "artificial intelligence trends",
-            "mode": "global",
+            "mode": "graph",
             "max_relation_tokens": 2000
         }
         ```

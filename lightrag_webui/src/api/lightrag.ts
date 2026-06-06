@@ -88,14 +88,14 @@ export type LightragDocumentsScanProgress = {
 
 /**
  * Specifies the retrieval mode:
- * - "naive": Performs a basic search without advanced techniques.
- * - "local": Focuses on context-dependent information.
- * - "global": Utilizes global knowledge.
- * - "hybrid": Combines local and global retrieval methods.
- * - "mix": Integrates knowledge graph and vector retrieval.
+ * - "naive": Performs a basic vector similarity search without knowledge graph.
+ * - "hybrid": Combines entity and relation VDB searches for comprehensive results.
+ * - "mix": Integrates knowledge graph and vector retrieval (recommended).
+ * - "stat": Returns statistical overview of the knowledge graph.
+ * - "graph": Ego-walk traversal from seed entities in the knowledge graph.
  * - "bypass": Bypasses knowledge retrieval and directly uses the LLM.
  */
-export type QueryMode = 'naive' | 'local' | 'global' | 'hybrid' | 'mix' | 'bypass' | 'stat' | 'graph'
+export type QueryMode = 'naive' | 'hybrid' | 'mix' | 'stat' | 'graph' | 'bypass'
 
 export type Message = {
   role: 'user' | 'assistant' | 'system'

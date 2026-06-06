@@ -14,11 +14,9 @@ from lightrag.api.utils_api import get_combined_auth_dependency
 from fastapi import Depends
 
 
-# query mode according to query prefix (bypass is not LightRAG quer mode)
+# query mode according to query prefix (bypass is not LightRAG query mode)
 class SearchMode(str, Enum):
     naive = "naive"
-    local = "local"
-    global_ = "global"
     hybrid = "hybrid"
     mix = "mix"
     bypass = "bypass"
@@ -186,23 +184,13 @@ def parse_query_mode(query: str) -> tuple[str, SearchMode, bool, Optional[str]]:
         # Reconstruct query, removing the bracket part
         query = f"/{mode_prefix} {remaining_query}".strip()
 
-    # Unified handling of mode and only_need_context determination
+    # Prefix-to-mode mapping.
     mode_map = {
-        "/local ": (SearchMode.local, False),
-        "/global ": (
-            SearchMode.global_,
-            False,
-        ),  # global_ is used because 'global' is a Python keyword
         "/naive ": (SearchMode.naive, False),
         "/hybrid ": (SearchMode.hybrid, False),
         "/mix ": (SearchMode.mix, False),
         "/bypass ": (SearchMode.bypass, False),
-        "/context": (
-            SearchMode.mix,
-            True,
-        ),
-        "/localcontext": (SearchMode.local, True),
-        "/globalcontext": (SearchMode.global_, True),
+        "/context": (SearchMode.mix, True),
         "/hybridcontext": (SearchMode.hybrid, True),
         "/naivecontext": (SearchMode.naive, True),
         "/mixcontext": (SearchMode.mix, True),

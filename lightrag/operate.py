@@ -4,6 +4,7 @@ from pathlib import Path
 
 import asyncio
 import json
+import re
 import json_repair
 from typing import Any, AsyncIterator, overload, Literal
 from collections import Counter, defaultdict
@@ -3249,9 +3250,9 @@ async def kg_query(
     logger.debug(f"Low-level  keywords: {ll_keywords}")
 
     # Handle empty keywords
-    if ll_keywords == [] and query_param.mode in ["local", "hybrid", "mix"]:
+    if ll_keywords == [] and query_param.mode in ["hybrid", "mix"]:
         logger.warning("low_level_keywords is empty")
-    if hl_keywords == [] and query_param.mode in ["global", "hybrid", "mix"]:
+    if hl_keywords == [] and query_param.mode in ["hybrid", "mix"]:
         logger.warning("high_level_keywords is empty")
     if hl_keywords == [] and ll_keywords == []:
         if len(query) < 50:
@@ -3880,6 +3881,15 @@ async def _perform_graph_ego_walk(
         hl_keyword_set = {
             kw.strip().lower() for kw in hl_keywords.split(",") if kw.strip()
         }
+    # hl_keyword edge filter — whole-token (word-boundary) match, not raw substring
+    # (avoids "main"⊂"maintain", "khoa"⊂"khoan" — esp. Vietnamese space-separated syllables).
+    # NOTE: semantic cosine edge scoring was trialled here and REVERTED: query-relevance
+    # cosine demotes the bridging edges multi-hop queries depend on (regressed 2hop recall).
+    # graph mode is topology-anchored; query-relevance retrieval belongs in hybrid/mix.
+    # See docs/graph_semantic_edge_matching.md.
+    hl_patterns = [
+        re.compile(r"(?<!\w)" + re.escape(kw) + r"(?!\w)") for kw in hl_keyword_set if kw
+    ]
 
     # Fetch metadata only for edges NOT in cache (large-ego seeds pre-cached during sort).
     if visited_edges:
@@ -3901,17 +3911,22 @@ async def _perform_graph_ego_walk(
     for edge_key, edge_pair in visited_edges.items():
         src, tgt = edge_pair["src"], edge_pair["tgt"]
         meta = edge_metadata.get((src, tgt), {})
-        # Compute hl_keyword overlap
+        # hl_keyword overlap via whole-token (word-boundary) match
         edge_keywords = (meta.get("keywords", "") or "").lower()
         edge_desc = (meta.get("description", "") or "").lower()
         overlap = 0
-        if hl_keyword_set:
-            for kw in hl_keyword_set:
-                if kw and (kw in edge_keywords or kw in edge_desc):
-                    overlap += 1
+        if hl_patterns:
+            haystack = edge_keywords + " \n " + edge_desc
+            overlap = sum(1 for p in hl_patterns if p.search(haystack))
 
-        if hl_mode == "strict" and hl_keyword_set and overlap == 0:
-            continue  # drop edge
+        if hl_mode == "strict":
+            if not hl_keyword_set:
+                logger.warning(
+                    "[graph_ego_walk] hl_mode=strict but hl_keywords empty "
+                    "→ skipping edge filter. Provide hl_keywords or use hl_mode=soft."
+                )
+            elif overlap == 0:
+                continue  # drop edge
 
         edge_hit = {
             "src_id": src,
@@ -3928,7 +3943,7 @@ async def _perform_graph_ego_walk(
             edge_hit["weight"] *= 1.0 + 0.5 * overlap
         filtered_edges.append(edge_hit)
 
-    # Sort edges by weight DESC
+    # Sort edges by weight DESC (topology-anchored ranking)
     filtered_edges.sort(key=lambda e: e["weight"], reverse=True)
 
     # Step 4: Build entity hits with metadata
@@ -4063,15 +4078,19 @@ async def _perform_kg_search(
             logger.warning(f"Graph ego-walk search failed: {e}")
             final_entities = []
             final_relations = []
-    elif query_param.mode in ("local", "global", "hybrid", "mix"):
+    elif query_param.mode in ("hybrid", "mix"):
         try:
-            # Step 1: VDB search
+            # Step 1: Dual-level VDB search (LightRAG). Low-level keywords drive ENTITY
+            # search; high-level keywords drive RELATION search — each embedded separately
+            # (do NOT reuse the full-query embedding, which collapses the dual-level into a
+            # single-anchor search). Fall back to the full query if a keyword level is empty.
+            entity_query = ll_keywords or query
+            relation_query = hl_keywords or query
             if entities_vdb is not None:
                 entity_vdb_hits = (
                     await entities_vdb.query(
-                        query=query,
+                        query=entity_query,
                         top_k=query_param.top_k,
-                        query_embedding=query_embedding,
                     )
                     or []
                 )
@@ -4081,9 +4100,8 @@ async def _perform_kg_search(
             if relationships_vdb is not None:
                 relation_vdb_hits = (
                     await relationships_vdb.query(
-                        query=query,
+                        query=relation_query,
                         top_k=query_param.top_k,
-                        query_embedding=query_embedding,
                     )
                     or []
                 )

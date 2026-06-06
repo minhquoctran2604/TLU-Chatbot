@@ -2753,7 +2753,7 @@ class LightRAG:
 
         query_result = None
 
-        if data_param.mode in ["local", "global", "hybrid", "mix", "stat", "graph"]:
+        if data_param.mode in ["hybrid", "mix", "stat", "graph"]:
             logger.debug(f"[aquery_data] Using kg_query for mode: {data_param.mode}")
             query_result = await kg_query(
                 query.strip(),
@@ -2853,7 +2853,7 @@ class LightRAG:
         try:
             query_result = None
 
-            if param.mode in ["local", "global", "hybrid", "mix", "stat", "graph"]:
+            if param.mode in ["hybrid", "mix", "stat", "graph"]:
                 query_result = await kg_query(
                     query.strip(),
                     self.chunk_entity_relation_graph,

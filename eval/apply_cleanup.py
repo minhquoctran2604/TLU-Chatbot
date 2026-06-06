@@ -7,10 +7,12 @@ Reads eval/cleanup_plan.json (produced by audit_graph.py) and:
      update Postgres rows from dup_name to canonical_name
 
 Postgres tables touched:
-  - lightrag_vdb_entity                                  (vector store, name field)
-  - lightrag_vdb_entity_microsoft_harrier_oss_v1_270m_640d (vector store with model suffix)
-  - lightrag_full_entities                                (per-doc entities, JSONB likely)
-  - lightrag_entity_chunks                                (entity ↔ chunk mapping)
+  - lightrag_vdb_entity                                  (vector store, entity_name col)
+  - lightrag_vdb_entity_microsoft_harrier_oss_v1_270m_640d (vector store, entity_name col)
+  - lightrag_full_entities                                (per-doc entities, JSONB)
+  - lightrag_entity_chunks                                (entity ↔ chunk mapping, id col)
+  - lightrag_vdb_relation*                                (relation vector store, source_id/target_id)
+  - lightrag_full_relations                               (per-doc relations, JSONB)
 
 DRY-RUN by default. Pass --apply to actually mutate.
 """
@@ -36,8 +38,14 @@ PLAN = "/home/tts/AI/aiQuoc/TLU-Chatbot/eval/cleanup_plan.json"
 ENTITY_TABLES = [
     ("lightrag_vdb_entity", "entity_name"),
     ("lightrag_vdb_entity_microsoft_harrier_oss_v1_270m_640d", "entity_name"),
-    ("lightrag_full_entities", None),         # JSONB content, special handling
-    ("lightrag_entity_chunks", "entity_name"),
+    ("lightrag_full_entities", None),   # JSONB content, special handling
+    ("lightrag_entity_chunks", "id"),   # column is "id" not "entity_name"
+]
+
+# Relation tables: delete rows where source_id OR target_id is a deleted entity
+RELATION_TABLES = [
+    "lightrag_vdb_relation",
+    "lightrag_vdb_relation_microsoft_harrier_oss_v1_270m_640d",
 ]
 
 
@@ -195,6 +203,26 @@ def apply_pg_cleanup(plan, dry_run: bool):
         else:
             # lightrag_full_entities has JSONB structure; skip for now
             print(f"  {table}: SKIP JSONB-based table (manual cleanup needed if necessary)")
+
+    # Clean relation tables: remove relations involving deleted entities
+    if delete_names:
+        placeholders = ",".join(["%s"] * len(delete_names))
+        for rel_table in RELATION_TABLES:
+            cur.execute("SELECT to_regclass(%s)", (f"public.{rel_table}",))
+            if cur.fetchone()[0] is None:
+                print(f"  {rel_table}: skip (not exist)")
+                continue
+            cur.execute(
+                f"SELECT COUNT(*) FROM {rel_table} WHERE source_id IN ({placeholders}) OR target_id IN ({placeholders})",
+                tuple(delete_names) * 2,
+            )
+            n_rel = cur.fetchone()[0]
+            print(f"  {rel_table}: would DELETE {n_rel} relation rows")
+            if not dry_run and n_rel > 0:
+                cur.execute(
+                    f"DELETE FROM {rel_table} WHERE source_id IN ({placeholders}) OR target_id IN ({placeholders})",
+                    tuple(delete_names) * 2,
+                )
 
     if not dry_run:
         conn.commit()

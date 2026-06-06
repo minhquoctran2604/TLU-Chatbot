@@ -11,6 +11,7 @@ Output: eval/cleanup_plan.json with two sections:
 """
 import re
 import json
+import argparse
 from pathlib import Path
 from collections import defaultdict
 import networkx as nx
@@ -24,7 +25,21 @@ INVALID_PATTERNS = [
     (re.compile(r"\[IMG_|IMG_\w+", re.I), "image marker"),
     (re.compile(r"^(unknown|n/a|none|null|tbd|undefined)$", re.I), "placeholder/empty"),
     (re.compile(r"^[\W_]+$"), "punctuation-only"),
+    # Rule 2 — file path nodes are not concepts
+    (re.compile(r"\.(php|js|css|html|md|min)\b", re.I), "file-path-node"),
+    (re.compile(r"^(routes|config|app)/", re.I), "file-path-node"),
 ]
+
+# Rule 1 — allowed entity types per LightRAG schema
+# NOTE: "unknown" is LightRAG's legit fallback for valid concepts the LLM
+# couldn't classify (e.g. "Big Data Storage", "Phụ thuộc đa trị"). Whitelist it
+# — do NOT flag as junk (an earlier run over-deleted ~15-20 valid concepts).
+ALLOWED_ENTITY_TYPES = {
+    "concept", "algorithm", "data_structure", "language",
+    "framework", "tool", "architecture", "metric", "person", "organization",
+    "unknown",
+    "unknown",
+}
 
 
 def normalize(name: str) -> str:
@@ -38,15 +53,15 @@ def pick_canonical(names: list[str]) -> str:
     return sorted(names, key=lambda n: (-sum(1 for c in n if c.isupper()), -len(n), n))[0]
 
 
-def audit():
-    print(f"Loading {GRAPHML}...")
-    G = nx.read_graphml(GRAPHML)
+def audit(graphml: str = GRAPHML, plan_out: Path = PLAN_OUT):
+    print(f"Loading {graphml}...")
+    G = nx.read_graphml(graphml)
     total = G.number_of_nodes()
     print(f"Nodes: {total} | Edges: {G.number_of_edges()}\n")
 
     delete_list = []  # [(name, category, reason)]
     by_norm = defaultdict(list)
-    for node in G.nodes():
+    for node, attrs in G.nodes(data=True):
         name = str(node).strip()
         norm = normalize(name)
         by_norm[norm].append(name)
@@ -60,6 +75,17 @@ def audit():
         if invalid_reason:
             delete_list.append({"name": name, "category": "invalid", "reason": invalid_reason})
             continue
+
+        # Rule 1 — entity_type must be in allowed schema
+        entity_type = str(attrs.get("entity_type", "")).strip().lower()
+        if entity_type and entity_type not in ALLOWED_ENTITY_TYPES:
+            delete_list.append({
+                "name": name,
+                "category": "invalid",
+                "reason": f"invalid-entity-type({entity_type})",
+            })
+            continue
+
         # Malformed
         if len(name) < 2:
             delete_list.append({"name": name, "category": "malformed", "reason": "too-short"})
@@ -93,16 +119,22 @@ def audit():
         "merge": merge_list,
     }
 
-    PLAN_OUT.write_text(json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8")
+    plan_out.write_text(json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"=== CLEANUP PLAN ===")
     print(f"  DELETE:        {len(delete_list)} nodes")
     print(f"    invalid:     {sum(1 for d in delete_list if d['category']=='invalid')}")
+    print(f"      file-path: {sum(1 for d in delete_list if d.get('reason')=='file-path-node')}")
+    print(f"      bad-type:  {sum(1 for d in delete_list if str(d.get('reason','')).startswith('invalid-entity-type'))}")
     print(f"    malformed:   {sum(1 for d in delete_list if d['category']=='malformed')}")
     print(f"    fragment:    {sum(1 for d in delete_list if d['category']=='fragment')}")
     print(f"  MERGE groups:  {len(merge_list)} groups → consolidate {sum(len(g['duplicates']) for g in merge_list)} duplicate nodes")
-    print(f"\n[SAVED] {PLAN_OUT}")
+    print(f"\n[SAVED] {plan_out}")
     return plan
 
 
 if __name__ == "__main__":
-    audit()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--graphml", default=GRAPHML, help="GraphML file to audit")
+    parser.add_argument("--out", default=str(PLAN_OUT), help="Cleanup plan output path")
+    args = parser.parse_args()
+    audit(args.graphml, Path(args.out))

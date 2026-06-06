@@ -52,6 +52,11 @@ MIN_INTERVAL = 60.0 / MAX_RPM
 
 GRAPHML = Path("/home/tts/AI/aiQuoc/tlu_workspace/graph_chunk_entity_relation.graphml")
 
+SUBSTANTIVE_TYPES = {
+    "concept", "algorithm", "data_structure", "language",
+    "framework", "tool", "architecture", "metric",
+}
+
 GENERIC = {
     "data", "title", "information", "system", "content", "process", "value",
     "user", "users", "method", "type", "name", "result", "model", "table",
@@ -123,6 +128,9 @@ def mine_2hop_paths(G, entity_subjects, entity_files, entity_descs):
             continue
         if A.lower().strip() in GENERIC or len(A) < 4:
             continue
+        a_type = G.nodes[A].get('entity_type', '').lower().strip()
+        if a_type not in SUBSTANTIVE_TYPES:
+            continue
         sa = next(iter(a_subjs))
         desc_A = entity_descs.get(A, '')
         if len(desc_A) < 80:
@@ -152,6 +160,9 @@ def mine_2hop_paths(G, entity_subjects, entity_files, entity_descs):
                 if C not in entity_subjects:
                     continue
                 if C.lower().strip() in GENERIC or len(C) < 4:
+                    continue
+                c_type = G.nodes[C].get('entity_type', '').lower().strip()
+                if c_type not in SUBSTANTIVE_TYPES:
                     continue
                 c_subjs = entity_subjects[C]
                 if len(c_subjs) != 1:
