@@ -2340,10 +2340,24 @@ class PGKVStorage(BaseKVStorage):
             )
             return
 
-        delete_sql = f"DELETE FROM {table_name} WHERE workspace=$1 AND id = ANY($2)"
+        # For entity/relation chunk tables, match id case-insensitively to handle
+        # pre-normalization rows where entity names may be mixed-case (e.g. "TLU" vs "tlu").
+        if is_namespace(
+            self.namespace,
+            (NameSpace.KV_STORE_ENTITY_CHUNKS, NameSpace.KV_STORE_RELATION_CHUNKS),
+        ):
+            delete_sql = (
+                f"DELETE FROM {table_name} WHERE workspace=$1 AND lower(id) = ANY($2)"
+            )
+            ids_param = [i.lower() for i in ids]
+        else:
+            delete_sql = f"DELETE FROM {table_name} WHERE workspace=$1 AND id = ANY($2)"
+            ids_param = ids
 
         try:
-            await self.db.execute(delete_sql, {"workspace": self.workspace, "ids": ids})
+            await self.db.execute(
+                delete_sql, {"workspace": self.workspace, "ids": ids_param}
+            )
             logger.debug(
                 f"[{self.workspace}] Successfully deleted {len(ids)} records from {self.namespace}"
             )
