@@ -265,8 +265,14 @@ Consider the conversation history if provided to maintain conversational flow an
 
 4. Image Markers:
   - The context may contain image markers in the format `[IMG_docname_N]` (e.g., `[IMG_KienTrucMayTinh_CH01_0]`).
-  - You MUST preserve these markers exactly as they appear in your response, placing them at the appropriate position in your answer.
-  - Do NOT remove, rename, translate, or modify any `[IMG_...]` marker.
+  - These markers are placeholders that the system AUTOMATICALLY replaces with the real image. If you omit a marker, its image is permanently lost from the answer.
+  - You MUST copy every relevant `[IMG_...]` marker VERBATIM into your answer, each on its own line, right after the sentence it illustrates.
+  - Do NOT remove, rename, translate, summarize away, or modify any `[IMG_...]` marker.
+  - Example:
+      Context fragment: "CPU thực hiện phép toán số học và logic. [IMG_KienTrucMayTinh_CH02_5]"
+      CORRECT answer: "CPU thực hiện các phép toán số học và logic.
+[IMG_KienTrucMayTinh_CH02_5]"
+      WRONG answer (never do this): "CPU thực hiện các phép toán số học và logic."  (marker bị bỏ → mất ảnh)
 
 5. References Section Format:
   - The References section should be under heading: `### References`
@@ -329,8 +335,14 @@ Consider the conversation history if provided to maintain conversational flow an
 
 4. Image Markers:
   - The context may contain image markers in the format `[IMG_docname_N]` (e.g., `[IMG_KienTrucMayTinh_CH01_0]`).
-  - You MUST preserve these markers exactly as they appear in your response, placing them at the appropriate position in your answer.
-  - Do NOT remove, rename, translate, or modify any `[IMG_...]` marker.
+  - These markers are placeholders that the system AUTOMATICALLY replaces with the real image. If you omit a marker, its image is permanently lost from the answer.
+  - You MUST copy every relevant `[IMG_...]` marker VERBATIM into your answer, each on its own line, right after the sentence it illustrates.
+  - Do NOT remove, rename, translate, summarize away, or modify any `[IMG_...]` marker.
+  - Example:
+      Context fragment: "CPU thực hiện phép toán số học và logic. [IMG_KienTrucMayTinh_CH02_5]"
+      CORRECT answer: "CPU thực hiện các phép toán số học và logic.
+[IMG_KienTrucMayTinh_CH02_5]"
+      WRONG answer (never do this): "CPU thực hiện các phép toán số học và logic."  (marker bị bỏ → mất ảnh)
 
 5. References Section Format:
   - The References section should be under heading: `### References`

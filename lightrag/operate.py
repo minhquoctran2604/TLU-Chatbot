@@ -201,6 +201,26 @@ def _enrich_response_with_images(
 
     if replaced_count > 0:
         logger.info(f"Image injection: {replaced_count} markers replaced inline")
+    elif all_filenames:
+        # Fallback: LLM dropped all markers (happens when context is large — hybrid/mix).
+        # Append images from source chunks in retrieval order, capped to avoid spam.
+        _IMG_FALLBACK_CAP = 6
+        fallback_imgs: list[str] = []
+        _seen_fnames: set[str] = set()
+        for _chunk_imgs in per_chunk_images:  # per_chunk_images is in retrieval order
+            for _fname in _chunk_imgs.values():
+                if _fname not in _seen_fnames:
+                    _seen_fnames.add(_fname)
+                    fallback_imgs.append(_fname)
+        if fallback_imgs:
+            _imgs_md = "\n\n".join(
+                f"![](/images/{fn})" for fn in fallback_imgs[:_IMG_FALLBACK_CAP]
+            )
+            enriched = enriched.rstrip() + "\n\n" + _imgs_md
+            logger.info(
+                f"Image injection: fallback append {len(fallback_imgs[:_IMG_FALLBACK_CAP])} images "
+                f"(LLM dropped all {len(all_filenames)} markers)"
+            )
 
     return enriched
 
