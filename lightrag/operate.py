@@ -136,13 +136,17 @@ def _enrich_response_with_images(
     all_filenames: set[str] = set()
     total_markers_in_chunks = 0
 
+    image_chunk_texts: dict[str, str] = {}  # filename -> source chunk text (for placement)
     for chunk in chunks:
-        chunk_id = chunk.get("chunk_id", "")
+        chunk_id = chunk.get("chunk_id", "") or chunk.get("id", "")
         if chunk_id in mapping:
             chunk_imgs = mapping[chunk_id]
             per_chunk_images.append(chunk_imgs)
             all_filenames.update(chunk_imgs.values())
             total_markers_in_chunks += len(chunk_imgs)
+            chunk_text = str(chunk.get("content", "") or "")
+            for _fn in chunk_imgs.values():
+                image_chunk_texts.setdefault(_fn, chunk_text)
 
     logger.info(
         f"[IMG_TRACE] Source chunks: {len(chunks)} total, {len(per_chunk_images)} with images, {total_markers_in_chunks} total markers, {len(all_filenames)} unique files"
@@ -202,24 +206,68 @@ def _enrich_response_with_images(
     if replaced_count > 0:
         logger.info(f"Image injection: {replaced_count} markers replaced inline")
     elif all_filenames:
-        # Fallback: LLM dropped all markers (happens when context is large — hybrid/mix).
-        # Append images from source chunks in retrieval order, capped to avoid spam.
+        # Fallback: LLM dropped all markers (happens when context is large — hybrid/mix:
+        # the model synthesizes instead of copying, regardless of prompt instructions).
+        # Place each image deterministically: lexically match its SOURCE CHUNK text
+        # against response paragraphs and insert after the best-matching paragraph
+        # (approximate inline). Unmatched images are appended at the end. Capped.
         _IMG_FALLBACK_CAP = 6
+        _MIN_PARA_WORDS = 8  # don't attach images to headings/short lines
+        _MIN_OVERLAP = 5  # min shared content-words to count as a match
+
+        def _words(s: str) -> set:
+            return {
+                w
+                for w in _re_clean.findall(r"[\wÀ-ỹ]+", s.lower())
+                if len(w) >= 3 and not w.startswith("img_")
+            }
+
         fallback_imgs: list[str] = []
         _seen_fnames: set[str] = set()
-        for _chunk_imgs in per_chunk_images:  # per_chunk_images is in retrieval order
+        for _chunk_imgs in per_chunk_images:  # retrieval (relevance) order
             for _fname in _chunk_imgs.values():
                 if _fname not in _seen_fnames:
                     _seen_fnames.add(_fname)
                     fallback_imgs.append(_fname)
+        fallback_imgs = fallback_imgs[:_IMG_FALLBACK_CAP]
+
         if fallback_imgs:
-            _imgs_md = "\n\n".join(
-                f"![](/images/{fn})" for fn in fallback_imgs[:_IMG_FALLBACK_CAP]
-            )
-            enriched = enriched.rstrip() + "\n\n" + _imgs_md
+            paragraphs = enriched.split("\n\n")
+            para_words = [
+                _words(p) if len(p.split()) >= _MIN_PARA_WORDS else set()
+                for p in paragraphs
+            ]
+            placements: dict[int, list[str]] = {}  # para_idx -> [filenames]
+            unplaced: list[str] = []
+            for _fname in fallback_imgs:
+                cwords = _words(image_chunk_texts.get(_fname, ""))
+                best_idx, best_score = -1, 0
+                if cwords:
+                    for _i, pwords in enumerate(para_words):
+                        score = len(cwords & pwords)
+                        if score > best_score:
+                            best_idx, best_score = _i, score
+                if (
+                    best_idx >= 0
+                    and best_score >= _MIN_OVERLAP
+                    and len(placements.get(best_idx, [])) < 2  # max 2 imgs per paragraph
+                ):
+                    placements.setdefault(best_idx, []).append(_fname)
+                else:
+                    unplaced.append(_fname)
+
+            out_parts: list[str] = []
+            for _i, p in enumerate(paragraphs):
+                out_parts.append(p)
+                for _fname in placements.get(_i, []):
+                    out_parts.append(f"![](/images/{_fname})")
+            for _fname in unplaced:
+                out_parts.append(f"![](/images/{_fname})")
+            enriched = "\n\n".join(out_parts)
+            placed = len(fallback_imgs) - len(unplaced)
             logger.info(
-                f"Image injection: fallback append {len(fallback_imgs[:_IMG_FALLBACK_CAP])} images "
-                f"(LLM dropped all {len(all_filenames)} markers)"
+                f"Image injection: fallback placed {placed} inline (chunk-paragraph match), "
+                f"{len(unplaced)} appended at end (LLM dropped all {len(all_filenames)} markers)"
             )
 
     return enriched
