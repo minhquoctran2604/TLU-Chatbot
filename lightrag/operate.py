@@ -3808,21 +3808,30 @@ async def _perform_graph_ego_walk(
         3. Edge filter by hl_keywords (soft: boost score, strict: drop non-matching)
         4. Collect entities + edges + chunks
 
-    Env vars (all int unless noted):
+    Edge ranking uses PathRAG-style flow propagation (degree-normalized resource decay)
+    instead of raw static edge weight. Each seed starts with flow=1.0; a node passes
+    S(child) = FLOW_ALPHA * S(parent) / degree(parent) to each neighbour. Division by the
+    parent's TRUE degree damps hub nodes (a 100-edge hub dilutes each child to ~1/100),
+    matching PathRAG (arXiv:2502.14902). A branch stops expanding once child flow drops
+    below FLOW_THETA (adaptive depth: sparse chains walk deeper, hubs stop after one hop);
+    FLOW_MAX_DEPTH is a hard safety cap. Static edge weight is retained only to pick which
+    edges survive the per-node hub cap (top-N by weight).
+
+    Env vars (int unless noted):
         GRAPH_SEED_TOP_K=10
-        GRAPH_DEG_THRESHOLD=30
-        GRAPH_SMALL_DEPTH=2
-        GRAPH_LARGE_DEPTH=1
-        GRAPH_LARGE_TOP_N_EDGES=20
-        GRAPH_HL_KEYWORD_MODE=soft  # "soft" or "strict"
+        GRAPH_LARGE_TOP_N_EDGES=20      # per-node hub cap: node with >N edges → keep top-N by weight
+        GRAPH_FLOW_ALPHA=0.8            # float — flow decay per hop
+        GRAPH_FLOW_THETA=0.05           # float — stop expanding a branch when child flow < theta
+        GRAPH_FLOW_MAX_DEPTH=3          # hard safety cap on BFS depth
+        GRAPH_HL_KEYWORD_MODE=soft      # "soft" (boost) or "strict" (drop non-matching)
     """
     import os as _os
 
     seed_top_k = int(_os.getenv("GRAPH_SEED_TOP_K", "10"))
-    deg_threshold = int(_os.getenv("GRAPH_DEG_THRESHOLD", "30"))
-    small_depth = int(_os.getenv("GRAPH_SMALL_DEPTH", "2"))
-    large_depth = int(_os.getenv("GRAPH_LARGE_DEPTH", "1"))
     large_top_n = int(_os.getenv("GRAPH_LARGE_TOP_N_EDGES", "20"))
+    flow_alpha = float(_os.getenv("GRAPH_FLOW_ALPHA", "0.8"))
+    flow_theta = float(_os.getenv("GRAPH_FLOW_THETA", "0.05"))
+    flow_max_depth = int(_os.getenv("GRAPH_FLOW_MAX_DEPTH", "3"))
     hl_mode = _os.getenv("GRAPH_HL_KEYWORD_MODE", "soft").lower()
 
     if entities_vdb is None or knowledge_graph_inst is None:
@@ -3863,7 +3872,8 @@ async def _perform_graph_ego_walk(
 
     # Collect visited entities + edges using BFS frontier expansion
     visited_entities = {}  # name -> seed score (cosine from seed_hits)
-    visited_edges = {}  # (src,tgt sorted) -> {src, tgt, hops_from_seed}
+    visited_edges = {}  # (src,tgt sorted) -> {src, tgt}
+    node_flow = {}  # name -> max flow score across all seeds (PathRAG-style resource propagation)
 
     # Prepare seed scores from VDB
     seed_score_map = {
@@ -3879,17 +3889,14 @@ async def _perform_graph_ego_walk(
         # Node does not exist in graph → skip entirely
         if seed_deg < 0:
             continue
-        if seed_deg < deg_threshold:
-            depth = small_depth
-            edge_cap = None  # no cap
-        else:
-            depth = large_depth
-            edge_cap = large_top_n
 
-        # BFS expand
+        # BFS expand with PathRAG-style flow propagation + adaptive early stopping.
+        # node_flow[node] = max flow received across all paths/seeds (take-max, not sum,
+        # to avoid double-counting nodes reachable via several seeds).
         frontier = {seed}
         visited_local = {seed}
-        for _ in range(depth):
+        node_flow[seed] = max(node_flow.get(seed, 0.0), 1.0)
+        for _ in range(flow_max_depth):
             if not frontier:
                 break
             # Get edges for all frontier nodes
@@ -3903,13 +3910,13 @@ async def _perform_graph_ego_walk(
             for node, edge_list in edges_dict.items():
                 if not edge_list:
                     continue
-                # Optional cap by edge weight
+                # Per-node hub cap: any node with more than large_top_n neighbours is
+                # trimmed to its top-N edges by static weight (checked at EVERY node, not
+                # decided once at the seed). Flow still divides by the TRUE degree below.
+                true_degree = len(edge_list)
                 edges_to_walk = edge_list
-                if edge_cap is not None and len(edge_list) > edge_cap:
-                    # Need edge weights to sort. Fetch edge metadata (cache for reuse in hl filter).
-                    edge_pair_dicts = [
-                        {"src": e[0], "tgt": e[1]} for e in edge_list
-                    ]
+                if true_degree > large_top_n:
+                    edge_pair_dicts = [{"src": e[0], "tgt": e[1]} for e in edge_list]
                     try:
                         edge_meta = await knowledge_graph_inst.get_edges_batch(edge_pair_dicts)
                         edge_meta_cache.update(edge_meta)
@@ -3920,21 +3927,29 @@ async def _perform_graph_ego_walk(
                         key=lambda e: edge_meta.get((e[0], e[1]), {}).get("weight", 0.0),
                         reverse=True,
                     )
-                    edges_to_walk = weighted[:edge_cap]
+                    edges_to_walk = weighted[:large_top_n]
+
+                # Flow decays by TRUE degree (hub damping), independent of the cap above.
+                parent_flow = node_flow.get(node, 0.0)
+                child_flow = flow_alpha * parent_flow / max(true_degree, 1)
 
                 for e in edges_to_walk:
                     src, tgt = e[0], e[1]
                     other = tgt if src == node else src
                     edge_key = tuple(sorted([src, tgt]))
                     visited_edges.setdefault(edge_key, {"src": src, "tgt": tgt})
+                    # Propagate flow to child (take-max across paths)
+                    node_flow[other] = max(node_flow.get(other, 0.0), child_flow)
                     if other not in visited_local:
-                        next_frontier.add(other)
                         visited_local.add(other)
+                        # Child is still collected & scored above; the branch only keeps
+                        # expanding while flow stays above threshold (adaptive depth).
+                        if child_flow >= flow_theta:
+                            next_frontier.add(other)
 
-            # next_frontier already deduped against visited_local inside loop above (line check)
             frontier = next_frontier
 
-        # Record visited entities with score (seed entities get original score, expanded get 0)
+        # Record visited entities (seed entities keep VDB cosine; expanded nodes get 0)
         for name in visited_local:
             if name not in visited_entities:
                 visited_entities[name] = seed_score_map.get(name, 0.0)
@@ -3951,10 +3966,11 @@ async def _perform_graph_ego_walk(
         }
     # hl_keyword edge filter — whole-token (word-boundary) match, not raw substring
     # (avoids "main"⊂"maintain", "khoa"⊂"khoan" — esp. Vietnamese space-separated syllables).
-    # NOTE: semantic cosine edge scoring was trialled here and REVERTED: query-relevance
-    # cosine demotes the bridging edges multi-hop queries depend on (regressed 2hop recall).
-    # graph mode is topology-anchored; query-relevance retrieval belongs in hybrid/mix.
-    # See docs/graph_semantic_edge_matching.md.
+    # NOTE: semantic cosine edge scoring (query vs per-edge embedding) was trialled here and
+    # REVERTED: query-relevance cosine demotes the bridging edges multi-hop queries depend on
+    # (regressed 2hop recall). Edges are instead ranked by PathRAG-style flow propagation
+    # (structural, query-anchored via seeds — see flow_score below), which keeps bridging
+    # edges alive. See docs/graph_semantic_edge_matching.md.
     hl_patterns = [
         re.compile(r"(?<!\w)" + re.escape(kw) + r"(?!\w)") for kw in hl_keyword_set if kw
     ]
@@ -3996,22 +4012,32 @@ async def _perform_graph_ego_walk(
             elif overlap == 0:
                 continue  # drop edge
 
+        # Flow-based edge score: average resource of the two endpoints (PathRAG path-reliability
+        # spirit). Falls back to static weight only when neither endpoint received flow.
+        src_flow = node_flow.get(src, 0.0)
+        tgt_flow = node_flow.get(tgt, 0.0)
+        flow_score = (
+            (src_flow + tgt_flow) / 2.0
+            if (src_flow + tgt_flow) > 0
+            else float(meta.get("weight", 1.0))
+        )
         edge_hit = {
             "src_id": src,
             "tgt_id": tgt,
             "description": meta.get("description", ""),
             "keywords": meta.get("keywords", ""),
-            "weight": float(meta.get("weight", 1.0)),
+            "weight": flow_score,  # flow score drives ranking; static weight kept in meta
+            "static_weight": float(meta.get("weight", 1.0)),
             "file_path": meta.get("file_path", ""),
             "source_id": meta.get("source_id", ""),
             "hl_overlap": overlap,
         }
-        # Boost weight by hl overlap for soft mode
+        # Boost flow score by hl overlap for soft mode
         if hl_mode == "soft" and overlap > 0:
             edge_hit["weight"] *= 1.0 + 0.5 * overlap
         filtered_edges.append(edge_hit)
 
-    # Sort edges by weight DESC (topology-anchored ranking)
+    # Sort edges by flow score DESC (PathRAG-style structural ranking)
     filtered_edges.sort(key=lambda e: e["weight"], reverse=True)
 
     # Step 4: Build entity hits with metadata
@@ -4050,7 +4076,8 @@ async def _perform_graph_ego_walk(
 
     logger.info(
         f"[graph_ego_walk] seeds={len(seed_names)} | entities={len(final_entities)} "
-        f"| edges={len(final_relations)} | hl_mode={hl_mode} | threshold={deg_threshold}"
+        f"| edges={len(final_relations)} | hl_mode={hl_mode} | "
+        f"flow(α={flow_alpha},θ={flow_theta},maxdepth={flow_max_depth},cap={large_top_n})"
     )
     return final_entities, final_relations
 
