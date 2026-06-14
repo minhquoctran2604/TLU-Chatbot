@@ -3823,6 +3823,7 @@ async def _perform_graph_ego_walk(
         GRAPH_FLOW_ALPHA=0.8            # float — flow decay per hop
         GRAPH_FLOW_THETA=0.05           # float — stop expanding a branch when child flow < theta
         GRAPH_FLOW_MAX_DEPTH=3          # hard safety cap on BFS depth
+        GRAPH_FLOW_ENTITY_LAMBDA=0.5    # float — weight of flow vs seed-cosine in entity ranking
         GRAPH_HL_KEYWORD_MODE=soft      # "soft" (boost) or "strict" (drop non-matching)
     """
     import os as _os
@@ -3832,6 +3833,7 @@ async def _perform_graph_ego_walk(
     flow_alpha = float(_os.getenv("GRAPH_FLOW_ALPHA", "0.8"))
     flow_theta = float(_os.getenv("GRAPH_FLOW_THETA", "0.05"))
     flow_max_depth = int(_os.getenv("GRAPH_FLOW_MAX_DEPTH", "3"))
+    flow_entity_lambda = float(_os.getenv("GRAPH_FLOW_ENTITY_LAMBDA", "0.5"))
     hl_mode = _os.getenv("GRAPH_HL_KEYWORD_MODE", "soft").lower()
 
     if entities_vdb is None or knowledge_graph_inst is None:
@@ -3938,8 +3940,9 @@ async def _perform_graph_ego_walk(
                     other = tgt if src == node else src
                     edge_key = tuple(sorted([src, tgt]))
                     visited_edges.setdefault(edge_key, {"src": src, "tgt": tgt})
-                    # Propagate flow to child (take-max across paths)
-                    node_flow[other] = max(node_flow.get(other, 0.0), child_flow)
+                    # Propagate flow to child (sum across seeds — rewards bridge nodes
+                    # reachable from multiple seeds, consistent with PPR linearity theorem).
+                    node_flow[other] = node_flow.get(other, 0.0) + child_flow
                     if other not in visited_local:
                         visited_local.add(other)
                         # Child is still collected & scored above; the branch only keeps
@@ -3957,6 +3960,42 @@ async def _perform_graph_ego_walk(
     if not visited_entities:
         logger.info("[graph_ego_walk] walk produced no entities")
         return [], []
+
+    # PPR refinement: run Random Walk with Restart iterations on collected subgraph.
+    # The BFS above is single-pass PathRAG-style flow (good for subgraph collection).
+    # PPR iterates to convergence so bridge nodes 2+ hops from seeds accumulate mass
+    # from multiple directions — cannot happen in a single forward sweep.
+    max_ppr_iter = int(_os.getenv("GRAPH_FLOW_MAX_ITER", "20"))
+
+    # Build within-subgraph adjacency from visited edges
+    _adj: dict[str, list[str]] = {}
+    for _ep in visited_edges.values():
+        _s, _t = _ep["src"], _ep["tgt"]
+        _adj.setdefault(_s, []).append(_t)
+        _adj.setdefault(_t, []).append(_s)
+
+    # Restart distribution: equal weight over valid seeds
+    _valid_seeds = [s for s in seed_names if s in visited_entities]
+    _restart_val = 1.0 / max(len(_valid_seeds), 1)
+    _e = {s: _restart_val for s in _valid_seeds}
+
+    # Warm-start PPR from BFS-computed flow
+    _v: dict[str, float] = {n: node_flow.get(n, 0.0) for n in visited_entities}
+
+    for _ in range(max_ppr_iter):
+        _v_new: dict[str, float] = {}
+        for _node in visited_entities:
+            _nbrs = [nb for nb in _adj.get(_node, []) if nb in visited_entities]
+            _prop = sum(
+                _v.get(nb, 0.0) / max(len(_adj.get(nb, [])), 1) for nb in _nbrs
+            )
+            _v_new[_node] = (1.0 - flow_alpha) * _e.get(_node, 0.0) + flow_alpha * _prop
+        _delta = sum(abs(_v_new.get(n, 0.0) - _v.get(n, 0.0)) for n in visited_entities)
+        _v = _v_new
+        if _delta < flow_theta:
+            break
+
+    node_flow = _v
 
     # Step 3: hl_keyword edge filtering
     hl_keyword_set = set()
@@ -4053,18 +4092,27 @@ async def _perform_graph_ego_walk(
         node = nodes.get(name)
         if not node:
             continue
+        seed_cosine = visited_entities.get(name, 0.0)
+        flow = node_flow.get(name, 0.0)
         entity_hits.append({
             "entity_name": name,
             "description": node.get("description", ""),
             "entity_type": node.get("entity_type", ""),
             "file_path": node.get("file_path", ""),
             "source_id": node.get("source_id", ""),
-            "distance": visited_entities.get(name, 0.0),
+            "distance": seed_cosine,
+            "flow": flow,
+            # Blended rank score: seed-cosine surfaces query-relevant seeds; flow surfaces
+            # walk-discovered (multi-hop) nodes that have NO cosine (distance=0.0) but DO carry
+            # PathRAG resource. Without the flow term these bridging nodes sink to the tail and
+            # get truncated by the token budget — defeating the point of graph traversal.
+            "rank_score": seed_cosine + flow_entity_lambda * flow,
         })
 
-    # Sort entities by similarity DESC (LightRAG VDB returns 1 - cosine_distance as 'distance',
-    # so higher = better match. Walk-expanded entities have distance=0.0 → end of list).
-    entity_hits.sort(key=lambda h: h.get("distance", 0.0), reverse=True)
+    # Sort entities by blended score DESC: seed-cosine (semantic match to query, only seeds
+    # have it) + lambda * flow (structural resource, all walk nodes have it). Pure-cosine sort
+    # buried every walk-expanded node at distance=0.0; the flow term lifts bridging entities.
+    entity_hits.sort(key=lambda h: h.get("rank_score", 0.0), reverse=True)
 
     # Step 5: Junction enrichment (chunk source_id override)
     final_entities = await _enrich_entities_from_junction(
@@ -4077,7 +4125,7 @@ async def _perform_graph_ego_walk(
     logger.info(
         f"[graph_ego_walk] seeds={len(seed_names)} | entities={len(final_entities)} "
         f"| edges={len(final_relations)} | hl_mode={hl_mode} | "
-        f"flow(α={flow_alpha},θ={flow_theta},maxdepth={flow_max_depth},cap={large_top_n})"
+        f"flow(α={flow_alpha},θ={flow_theta},maxdepth={flow_max_depth},cap={large_top_n},λ={flow_entity_lambda},agg=sum)"
     )
     return final_entities, final_relations
 
@@ -4608,6 +4656,8 @@ async def _build_context_str(
     # Use naive template when entities/relations are empty (Text2Cypher replaces KG VDB)
     if not entities_context and not relations_context:
         kg_context_template = PROMPTS["naive_query_context"]
+    elif query_param.mode == "graph":
+        kg_context_template = PROMPTS["graph_query_context"]
     else:
         kg_context_template = PROMPTS["kg_query_context"]
     user_prompt = query_param.user_prompt if query_param.user_prompt else ""

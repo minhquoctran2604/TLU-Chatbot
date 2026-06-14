@@ -399,6 +399,37 @@ Reference Document List (Each entry starts with a [reference_id] that correspond
 """
 
 PROMPTS[
+    "graph_query_context"
+] = """
+[Context retrieved via multi-hop graph traversal. The entities and relationships below form a neighborhood subgraph anchored on query-relevant seed nodes. Trace the connection paths between entities to reason through the answer — do not treat each entity in isolation.]
+
+Knowledge Graph Data (Entity):
+
+```json
+{entities_str}
+```
+
+Knowledge Graph Data (Relationship):
+
+```json
+{relations_str}
+```
+
+Document Chunks (Each entry has a reference_id refer to the `Reference Document List`):
+
+```json
+{text_chunks_str}
+```
+
+Reference Document List (Each entry starts with a [reference_id] that corresponds to entries in the Document Chunks):
+
+```
+{reference_list_str}
+```
+
+"""
+
+PROMPTS[
     "naive_query_context"
 ] = """
 Document Chunks (Each entry has a reference_id refer to the `Reference Document List`):
