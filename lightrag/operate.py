@@ -3833,7 +3833,7 @@ async def _perform_graph_ego_walk(
     flow_alpha = float(_os.getenv("GRAPH_FLOW_ALPHA", "0.8"))
     flow_theta = float(_os.getenv("GRAPH_FLOW_THETA", "0.05"))
     flow_max_depth = int(_os.getenv("GRAPH_FLOW_MAX_DEPTH", "3"))
-    flow_entity_lambda = float(_os.getenv("GRAPH_FLOW_ENTITY_LAMBDA", "0.5"))
+    flow_entity_lambda = float(_os.getenv("GRAPH_FLOW_ENTITY_LAMBDA", "0.1"))
     hl_mode = _os.getenv("GRAPH_HL_KEYWORD_MODE", "soft").lower()
 
     if entities_vdb is None or knowledge_graph_inst is None:
