@@ -205,10 +205,19 @@ async def notebook_ingest_pdf(
         chunk_texts: List[str] = []
         image_mapping: Dict[str, Dict[str, str]] = {}
 
-        for chunk in doc_chunks:
+        # Compute doc_key BEFORE the loop so image_mapping uses salted chunk_ids
+        # that match VDB storage (must match ainsert_custom_chunks in lightrag.py).
+        _temp_markdown = markdown  # available from earlier conversion
+        doc_key = compute_mdhash_id(_temp_markdown, prefix="doc-")
+
+        for idx, chunk in enumerate(doc_chunks):
             chunk_text = chunker.contextualize(chunk)
             chunk_texts.append(chunk_text)
-            chunk_id = compute_chunk_id(chunk_text)
+            # Use salted chunk_id to match VDB storage:
+            # (doc_key, index, content) → globally unique chunk_id.
+            chunk_id = compute_mdhash_id(
+                f"{doc_key}::{idx}::{chunk_text}", prefix="chunk-"
+            )
 
             saved_images = (
                 provider.picture_serializer.image_files
@@ -262,6 +271,7 @@ async def notebook_ingest_pdf(
             "chunk_texts": chunk_texts,
             "mapping_path": str(mapping_path),
             "doc_name": doc_name,
+            "doc_key": doc_key,
             "saved_count": saved_count,
             "skipped": skipped,
             "skipped_decorative": skipped_decorative,
@@ -275,7 +285,7 @@ async def notebook_ingest_pdf(
 
     try:
         prepared = await asyncio.to_thread(_prepare_pdf_ingest_artifacts)
-        doc_key = compute_mdhash_id(prepared["markdown"], prefix="doc-")
+        doc_key = prepared["doc_key"]
 
         await rag.initialize_storages()
         await rag.doc_status.upsert(
