@@ -86,7 +86,7 @@ export const supportedFileTypes = {
 }
 
 export const SiteInfo = {
-  name: 'LightRAG',
+  name: 'TLU Chatbot',
   home: '/',
   github: 'https://github.com/HKUDS/LightRAG'
 }

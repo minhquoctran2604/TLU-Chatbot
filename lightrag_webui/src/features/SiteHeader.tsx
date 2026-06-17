@@ -7,7 +7,7 @@ import { useAuthStore } from '@/stores/state'
 import { cn } from '@/lib/utils'
 import { useTranslation } from 'react-i18next'
 import { navigationService } from '@/services/navigation'
-import { ZapIcon, GithubIcon, LogOutIcon } from 'lucide-react'
+import { Droplet, GithubIcon, LogOutIcon } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/Tooltip'
 
 interface NavigationTabProps {
@@ -21,8 +21,8 @@ function NavigationTab({ value, currentTab, children }: NavigationTabProps) {
     <TabsTrigger
       value={value}
       className={cn(
-        'cursor-pointer px-2 py-1 transition-all',
-        currentTab === value ? '!bg-emerald-400 !text-zinc-50' : 'hover:bg-background/60'
+        'cursor-pointer px-2 py-1 transition-all rounded-md',
+        currentTab === value ? '!bg-primary !text-primary-foreground font-medium' : 'hover:bg-background/60 text-muted-foreground hover:text-foreground'
       )}
     >
       {children}
@@ -76,8 +76,8 @@ export default function SiteHeader() {
     <header className="border-border/40 bg-background/95 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50 flex h-10 w-full border-b px-4 backdrop-blur">
       <div className="min-w-[200px] w-auto flex items-center">
         <a href={webuiPrefix} className="flex items-center gap-2">
-          <ZapIcon className="size-4 text-emerald-400" aria-hidden="true" />
-          <span className="font-bold md:inline-block">{SiteInfo.name}</span>
+          <Droplet className="size-4 text-primary animate-pulse" aria-hidden="true" />
+          <span className="font-bold md:inline-block text-primary">{SiteInfo.name}</span>
         </a>
         {webuiTitle && (
           <div className="flex items-center">
