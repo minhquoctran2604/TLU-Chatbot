@@ -146,7 +146,7 @@ const LoginPage = () => {
   }
 
   return (
-    <div className="flex h-screen w-screen items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-slate-950 dark:to-slate-900">
+    <div className="flex h-screen w-screen items-center justify-center bg-gradient-to-br from-blue-50 to-sky-100 dark:from-slate-950 dark:to-slate-900">
       <div className="absolute top-4 right-4 flex items-center gap-2">
         <AppSettings className="bg-white/30 dark:bg-gray-800/30 backdrop-blur-sm rounded-md" />
       </div>
@@ -154,11 +154,10 @@ const LoginPage = () => {
         <CardHeader className="flex items-center justify-center space-y-2 pb-8 pt-6">
           <div className="flex flex-col items-center space-y-4">
             <div className="flex items-center gap-3">
-              <img src="logo.svg" alt="TLU Logo" className="h-12 w-12" />
-              <Droplet className="size-10 text-primary animate-pulse" aria-hidden="true" />
+              <img src="tlu_logo.png" alt="TLU Logo" className="h-20 w-auto" />
             </div>
             <div className="text-center space-y-2">
-              <h1 className="text-3xl font-bold tracking-tight text-primary">{SiteInfo.name}</h1>
+              <h1 className="text-3xl font-bold tracking-tight text-primary">TLU Chatbot</h1>
               <p className="text-muted-foreground text-sm">
                 {t('login.description')}
               </p>

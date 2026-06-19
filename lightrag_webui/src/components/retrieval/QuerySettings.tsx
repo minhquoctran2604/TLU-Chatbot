@@ -73,29 +73,35 @@ export default function QuerySettings() {
   )
 
   return (
-    <Card className="flex shrink-0 flex-col w-[280px]">
-      <CardHeader className="px-4 pt-4 pb-2">
-        <CardTitle>{t('retrievePanel.querySettings.parametersTitle')}</CardTitle>
+    <Card className="flex shrink-0 flex-col w-[280px] border border-slate-200/80 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/30 backdrop-blur-md shadow-[0_4px_20px_-2px_rgba(0,0,0,0.04)] dark:shadow-none">
+      <CardHeader className="px-4 pt-4 pb-3 border-b border-slate-200/80 dark:border-slate-800/60 bg-slate-100/50 dark:bg-slate-900/40 rounded-t-xl">
+        <CardTitle className="text-sm font-bold text-primary">{t('retrievePanel.querySettings.parametersTitle')}</CardTitle>
         <CardDescription className="sr-only">{t('retrievePanel.querySettings.parametersDescription')}</CardDescription>
       </CardHeader>
-      <CardContent className="m-0 flex grow flex-col p-0 text-xs">
+      <CardContent className="m-0 flex grow flex-col p-3 text-xs overflow-hidden">
         <div className="relative size-full">
-          <div className="absolute inset-0 flex flex-col gap-2 overflow-auto px-2 pr-2">
-            {/* User Prompt - Moved to top for better dropdown space */}
-            <>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <label htmlFor="user_prompt" className="ml-1 cursor-help">
-                      {t('retrievePanel.querySettings.userPrompt')}
-                    </label>
-                  </TooltipTrigger>
-                  <TooltipContent side="left">
-                    <p>{t('retrievePanel.querySettings.userPromptTooltip')}</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <div>
+          <div className="absolute inset-0 flex flex-col gap-3.5 overflow-auto pr-1 select-none">
+            
+            {/* Group 1: Chế độ truy vấn (User Prompt & Query Mode) */}
+            <div className="p-3 bg-white dark:bg-slate-950/75 border border-slate-200/60 dark:border-slate-800/40 rounded-xl space-y-3 shrink-0 shadow-sm hover:shadow-md transition-all duration-300">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-primary">
+                Chế độ truy vấn
+              </div>
+              
+              {/* User Prompt */}
+              <div className="space-y-1">
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <label htmlFor="user_prompt" className="ml-0.5 font-medium text-muted-foreground cursor-help">
+                        {t('retrievePanel.querySettings.userPrompt')}
+                      </label>
+                    </TooltipTrigger>
+                    <TooltipContent side="left">
+                      <p>{t('retrievePanel.querySettings.userPromptTooltip')}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
                 <UserPromptInputWithHistory
                   id="user_prompt"
                   value={querySettings.user_prompt || ''}
@@ -104,140 +110,151 @@ export default function QuerySettings() {
                   onDeleteFromHistory={handleDeleteFromHistory}
                   history={userPromptHistory}
                   placeholder={t('retrievePanel.querySettings.userPromptPlaceholder')}
-                  className="h-9"
+                  className="h-9 w-full bg-background border-slate-300/80 dark:border-slate-700/80 focus-visible:border-primary"
                 />
               </div>
-            </>
 
-            {/* Query Mode */}
-            <>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <label htmlFor="query_mode_select" className="ml-1 cursor-help">
-                      {t('retrievePanel.querySettings.queryMode')}
-                    </label>
-                  </TooltipTrigger>
-                  <TooltipContent side="left">
-                    <p>{t('retrievePanel.querySettings.queryModeTooltip')}</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <div className="flex items-center gap-1">
-                <Select
-                  value={querySettings.mode}
-                  onValueChange={(v) => handleChange('mode', v as QueryMode)}
-                >
-                  <SelectTrigger
-                    id="query_mode_select"
-                    className="hover:bg-primary/5 h-9 cursor-pointer focus:ring-0 focus:ring-offset-0 focus:outline-0 active:right-0 flex-1 text-left [&>span]:break-all [&>span]:line-clamp-1"
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      <SelectItem value="naive">{t('retrievePanel.querySettings.queryModeOptions.naive')}</SelectItem>
-                      <SelectItem value="hybrid">{t('retrievePanel.querySettings.queryModeOptions.hybrid')}</SelectItem>
-                      <SelectItem value="stat">{t('retrievePanel.querySettings.queryModeOptions.stat')}</SelectItem>
-                      <SelectItem value="mix">{t('retrievePanel.querySettings.queryModeOptions.mix')}</SelectItem>
-                      <SelectItem value="graph">{t('retrievePanel.querySettings.queryModeOptions.graph')}</SelectItem>
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-                <ResetButton
-                  onClick={() => handleReset('mode')}
-                  title="Reset to default (Mix)"
-                />
-              </div>
-            </>
-
-            {/* Chunk Top K */}
-            <>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <label htmlFor="chunk_top_k" className="ml-1 cursor-help">
-                      {t('retrievePanel.querySettings.chunkTopK')}
-                    </label>
-                  </TooltipTrigger>
-                  <TooltipContent side="left">
-                    <p>{t('retrievePanel.querySettings.chunkTopKTooltip')}</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <div className="flex items-center gap-1">
-                <Input
-                  id="chunk_top_k"
-                  type="number"
-                  value={querySettings.chunk_top_k ?? ''}
-                  onChange={(e) => {
-                    const value = e.target.value
-                    handleChange('chunk_top_k', value === '' ? '' : parseInt(value) || 0)
-                  }}
-                  onBlur={(e) => {
-                    const value = e.target.value
-                    if (value === '' || isNaN(parseInt(value))) {
-                      handleChange('chunk_top_k', 20)
-                    }
-                  }}
-                  min={1}
-                  placeholder={t('retrievePanel.querySettings.chunkTopKPlaceholder')}
-                  className="h-9 flex-1 pr-2 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [-moz-appearance:textfield]"
-                />
-                <ResetButton
-                  onClick={() => handleReset('chunk_top_k')}
-                  title="Reset to default"
-                />
-              </div>
-            </>
-
-            {/* Max Total Tokens */}
-            <>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <label htmlFor="max_total_tokens" className="ml-1 cursor-help">
-                      {t('retrievePanel.querySettings.maxTotalTokens')}
-                    </label>
-                  </TooltipTrigger>
-                  <TooltipContent side="left">
-                    <p>{t('retrievePanel.querySettings.maxTotalTokensTooltip')}</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <div className="flex items-center gap-1">
-                <Input
-                  id="max_total_tokens"
-                  type="number"
-                  value={querySettings.max_total_tokens ?? ''}
-                  onChange={(e) => {
-                    const value = e.target.value
-                    handleChange('max_total_tokens', value === '' ? '' : parseInt(value) || 0)
-                  }}
-                  onBlur={(e) => {
-                    const value = e.target.value
-                    if (value === '' || isNaN(parseInt(value))) {
-                      handleChange('max_total_tokens', 30000)
-                    }
-                  }}
-                  min={1}
-                  placeholder={t('retrievePanel.querySettings.maxTotalTokensPlaceholder')}
-                  className="h-9 flex-1 pr-2 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [-moz-appearance:textfield]"
-                />
-                <ResetButton
-                  onClick={() => handleReset('max_total_tokens')}
-                  title="Reset to default"
-                />
-              </div>
-            </>
-
-            {/* Toggle Options */}
-            <>
-              <div className="flex items-center gap-2">
+              {/* Query Mode */}
+              <div className="space-y-1">
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <label htmlFor="enable_rerank" className="flex-1 ml-1 cursor-help">
+                      <label htmlFor="query_mode_select" className="ml-0.5 font-medium text-muted-foreground cursor-help">
+                        {t('retrievePanel.querySettings.queryMode')}
+                      </label>
+                    </TooltipTrigger>
+                    <TooltipContent side="left">
+                      <p>{t('retrievePanel.querySettings.queryModeTooltip')}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+                <div className="flex items-center gap-1.5">
+                  <Select
+                    value={querySettings.mode}
+                    onValueChange={(v) => handleChange('mode', v as QueryMode)}
+                  >
+                    <SelectTrigger
+                      id="query_mode_select"
+                      className="hover:bg-primary/5 h-9 cursor-pointer focus:ring-0 focus:ring-offset-0 focus:outline-0 flex-1 text-left bg-background border-slate-300/80 dark:border-slate-700/80 [&>span]:break-all [&>span]:line-clamp-1"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectItem value="naive">{t('retrievePanel.querySettings.queryModeOptions.naive')}</SelectItem>
+                        <SelectItem value="hybrid">{t('retrievePanel.querySettings.queryModeOptions.hybrid')}</SelectItem>
+                        <SelectItem value="stat">{t('retrievePanel.querySettings.queryModeOptions.stat')}</SelectItem>
+                        <SelectItem value="mix">{t('retrievePanel.querySettings.queryModeOptions.mix')}</SelectItem>
+                        <SelectItem value="graph">{t('retrievePanel.querySettings.queryModeOptions.graph')}</SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                  <ResetButton
+                    onClick={() => handleReset('mode')}
+                    title="Reset to default (Mix)"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Group 2: Tham số thu hồi (Chunk Top K & Max Total Tokens) */}
+            <div className="p-3 bg-white dark:bg-slate-950/75 border border-slate-200/60 dark:border-slate-800/40 rounded-xl space-y-3 shrink-0 shadow-sm hover:shadow-md transition-all duration-300">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-primary">
+                Tham số thu hồi
+              </div>
+
+              {/* Chunk Top K */}
+              <div className="space-y-1">
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <label htmlFor="chunk_top_k" className="ml-0.5 font-medium text-muted-foreground cursor-help">
+                        {t('retrievePanel.querySettings.chunkTopK')}
+                      </label>
+                    </TooltipTrigger>
+                    <TooltipContent side="left">
+                      <p>{t('retrievePanel.querySettings.chunkTopKTooltip')}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    id="chunk_top_k"
+                    type="number"
+                    value={querySettings.chunk_top_k ?? ''}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      handleChange('chunk_top_k', value === '' ? '' : parseInt(value) || 0)
+                    }}
+                    onBlur={(e) => {
+                      const value = e.target.value
+                      if (value === '' || isNaN(parseInt(value))) {
+                        handleChange('chunk_top_k', 20)
+                      }
+                    }}
+                    min={1}
+                    placeholder={t('retrievePanel.querySettings.chunkTopKPlaceholder')}
+                    className="h-9 flex-1 bg-background border-slate-300/80 dark:border-slate-700/80 pr-2 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [-moz-appearance:textfield]"
+                  />
+                  <ResetButton
+                    onClick={() => handleReset('chunk_top_k')}
+                    title="Reset to default"
+                  />
+                </div>
+              </div>
+
+              {/* Max Total Tokens */}
+              <div className="space-y-1">
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <label htmlFor="max_total_tokens" className="ml-0.5 font-medium text-muted-foreground cursor-help">
+                        {t('retrievePanel.querySettings.maxTotalTokens')}
+                      </label>
+                    </TooltipTrigger>
+                    <TooltipContent side="left">
+                      <p>{t('retrievePanel.querySettings.maxTotalTokensTooltip')}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    id="max_total_tokens"
+                    type="number"
+                    value={querySettings.max_total_tokens ?? ''}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      handleChange('max_total_tokens', value === '' ? '' : parseInt(value) || 0)
+                    }}
+                    onBlur={(e) => {
+                      const value = e.target.value
+                      if (value === '' || isNaN(parseInt(value))) {
+                        handleChange('max_total_tokens', 30000)
+                      }
+                    }}
+                    min={1}
+                    placeholder={t('retrievePanel.querySettings.maxTotalTokensPlaceholder')}
+                    className="h-9 flex-1 bg-background border-slate-300/80 dark:border-slate-700/80 pr-2 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [-moz-appearance:textfield]"
+                  />
+                  <ResetButton
+                    onClick={() => handleReset('max_total_tokens')}
+                    title="Reset to default"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Group 3: Cấu hình phản hồi (Toggles) */}
+            <div className="p-3 bg-white dark:bg-slate-950/75 border border-slate-200/60 dark:border-slate-800/40 rounded-xl space-y-3 shrink-0 shadow-sm hover:shadow-md transition-all duration-300">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-primary mb-1">
+                Cấu hình phản hồi
+              </div>
+
+              <div className="flex items-center justify-between gap-2 py-0.5">
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <label htmlFor="enable_rerank" className="cursor-help text-muted-foreground font-medium">
                         {t('retrievePanel.querySettings.enableRerank')}
                       </label>
                     </TooltipTrigger>
@@ -247,18 +264,18 @@ export default function QuerySettings() {
                   </Tooltip>
                 </TooltipProvider>
                 <Checkbox
-                  className="mr-10 cursor-pointer"
+                  className="cursor-pointer"
                   id="enable_rerank"
                   checked={querySettings.enable_rerank}
                   onCheckedChange={(checked) => handleChange('enable_rerank', checked)}
                 />
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center justify-between gap-2 py-0.5">
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <label htmlFor="only_need_context" className="flex-1 ml-1 cursor-help">
+                      <label htmlFor="only_need_context" className="cursor-help text-muted-foreground font-medium">
                         {t('retrievePanel.querySettings.onlyNeedContext')}
                       </label>
                     </TooltipTrigger>
@@ -268,7 +285,7 @@ export default function QuerySettings() {
                   </Tooltip>
                 </TooltipProvider>
                 <Checkbox
-                  className="mr-10 cursor-pointer"
+                  className="cursor-pointer"
                   id="only_need_context"
                   checked={querySettings.only_need_context}
                   onCheckedChange={(checked) => {
@@ -280,11 +297,11 @@ export default function QuerySettings() {
                 />
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center justify-between gap-2 py-0.5">
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <label htmlFor="only_need_prompt" className="flex-1 ml-1 cursor-help">
+                      <label htmlFor="only_need_prompt" className="cursor-help text-muted-foreground font-medium">
                         {t('retrievePanel.querySettings.onlyNeedPrompt')}
                       </label>
                     </TooltipTrigger>
@@ -294,7 +311,7 @@ export default function QuerySettings() {
                   </Tooltip>
                 </TooltipProvider>
                 <Checkbox
-                  className="mr-10 cursor-pointer"
+                  className="cursor-pointer"
                   id="only_need_prompt"
                   checked={querySettings.only_need_prompt}
                   onCheckedChange={(checked) => {
@@ -306,11 +323,11 @@ export default function QuerySettings() {
                 />
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center justify-between gap-2 py-0.5">
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <label htmlFor="stream" className="flex-1 ml-1 cursor-help">
+                      <label htmlFor="stream" className="cursor-help text-muted-foreground font-medium">
                         {t('retrievePanel.querySettings.streamResponse')}
                       </label>
                     </TooltipTrigger>
@@ -320,13 +337,13 @@ export default function QuerySettings() {
                   </Tooltip>
                 </TooltipProvider>
                 <Checkbox
-                  className="mr-10 cursor-pointer"
+                  className="cursor-pointer"
                   id="stream"
                   checked={querySettings.stream}
                   onCheckedChange={(checked) => handleChange('stream', checked)}
                 />
               </div>
-            </>
+            </div>
 
           </div>
         </div>

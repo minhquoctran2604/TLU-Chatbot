@@ -12,18 +12,14 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 
 interface NavigationTabProps {
   value: string
-  currentTab: string
   children: React.ReactNode
 }
 
-function NavigationTab({ value, currentTab, children }: NavigationTabProps) {
+function NavigationTab({ value, children }: NavigationTabProps) {
   return (
     <TabsTrigger
       value={value}
-      className={cn(
-        'cursor-pointer px-2 py-1 transition-all rounded-md',
-        currentTab === value ? '!bg-primary !text-primary-foreground font-medium' : 'hover:bg-background/60 text-muted-foreground hover:text-foreground'
-      )}
+      className="cursor-pointer px-3 py-1 transition-all data-[state=active]:!bg-primary data-[state=active]:!text-primary-foreground hover:bg-primary/10 hover:text-primary"
     >
       {children}
     </TabsTrigger>
@@ -31,22 +27,21 @@ function NavigationTab({ value, currentTab, children }: NavigationTabProps) {
 }
 
 function TabsNavigation() {
-  const currentTab = useSettingsStore.use.currentTab()
   const { t } = useTranslation()
 
   return (
     <div className="flex h-8 self-center">
       <TabsList className="h-full gap-2">
-        <NavigationTab value="documents" currentTab={currentTab}>
+        <NavigationTab value="documents">
           {t('header.documents')}
         </NavigationTab>
-        <NavigationTab value="knowledge-graph" currentTab={currentTab}>
+        <NavigationTab value="knowledge-graph">
           {t('header.knowledgeGraph')}
         </NavigationTab>
-        <NavigationTab value="retrieval" currentTab={currentTab}>
+        <NavigationTab value="retrieval">
           {t('header.retrieval')}
         </NavigationTab>
-        <NavigationTab value="api" currentTab={currentTab}>
+        <NavigationTab value="api">
           {t('header.api')}
         </NavigationTab>
       </TabsList>
@@ -73,10 +68,10 @@ export default function SiteHeader() {
   }
 
   return (
-    <header className="border-border/40 bg-background/95 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50 flex h-10 w-full border-b px-4 backdrop-blur">
+    <header className="border-border/40 bg-card/95 supports-[backdrop-filter]:bg-card/60 sticky top-0 z-50 flex h-10 w-full border-b px-4 backdrop-blur">
       <div className="min-w-[200px] w-auto flex items-center">
         <a href={webuiPrefix} className="flex items-center gap-2">
-          <Droplet className="size-4 text-primary animate-pulse" aria-hidden="true" />
+          <img src="favicon.png" alt="TLU Logo" className="h-6 w-auto" />
           <span className="font-bold md:inline-block text-primary">{SiteInfo.name}</span>
         </a>
         {webuiTitle && (

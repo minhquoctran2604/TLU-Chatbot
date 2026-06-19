@@ -333,7 +333,7 @@ const NodePropertiesView = ({ node }: { node: NodeType }) => {
       </div>
       {node.relationships.length > 0 && (
         <>
-          <h3 className="text-md pl-1 font-bold tracking-wide text-emerald-700">
+          <h3 className="text-md pl-1 font-bold tracking-wide text-indigo-700 dark:text-indigo-400">
             {t('graphPanel.propertiesView.node.relationships')}
           </h3>
           <div className="bg-primary/5 max-h-96 overflow-auto rounded p-1">
