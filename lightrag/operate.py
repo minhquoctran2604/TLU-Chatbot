@@ -117,6 +117,12 @@ def _enrich_response_with_images(
     3. Fallback: append unique images at end of response
     """
     import re as _re
+    from urllib.parse import quote as _url_quote
+
+    def _img_md(_fn: str) -> str:
+        # URL-encode filename (spaces/dots/unicode) so markdown URL is not
+        # truncated at the first space by the renderer.
+        return f"![](/images/{_url_quote(_fn)})"
 
     mapping = _load_image_mapping(working_dir)
     if not mapping:
@@ -172,7 +178,7 @@ def _enrich_response_with_images(
         if marker in enriched and len(filenames) == 1:
             # Replace first occurrence with image on its own line, remove duplicates
             enriched = enriched.replace(
-                marker, f"\n\n![](/images/{filenames[0]})\n\n", 1
+                marker, f"\n\n{_img_md(filenames[0])}\n\n", 1
             )
             enriched = enriched.replace(marker, "")  # remove any remaining duplicates
             replaced_files.add(filenames[0])
@@ -221,7 +227,7 @@ def _enrich_response_with_images(
         fallback_imgs = fallback_imgs[:_IMG_FALLBACK_CAP]
 
         if fallback_imgs:
-            image_lines = [f"![](/images/{_fname})" for _fname in fallback_imgs]
+            image_lines = [_img_md(_fname) for _fname in fallback_imgs]
             enriched = enriched.rstrip() + "\n\n### Images\n\n" + "\n\n".join(image_lines)
             logger.info(
                 f"Image injection: appended {len(fallback_imgs)} images at end "
