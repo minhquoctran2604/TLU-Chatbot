@@ -1,8 +1,11 @@
 import asyncio
-import logging
-import json
 import hashlib
+import json
+import logging
+import os
 import re
+import tempfile
+import threading
 import traceback
 from pathlib import Path
 from typing import Dict, List, Any
@@ -35,6 +38,8 @@ from lightrag.utils import compute_mdhash_id
 
 _HARRIER_MODEL: SentenceTransformer | None = None
 _HARRIER_DIM: int | None = None
+
+_image_mapping_lock = threading.Lock()
 
 
 def _get_harrier_model() -> SentenceTransformer:
@@ -235,20 +240,37 @@ async def notebook_ingest_pdf(
                     image_mapping[chunk_id] = chunk_image_map
 
         mapping_path = working_dir / "image_mapping.json"
-        merged_image_mapping: Dict[str, Dict[str, str]] = {}
-        if mapping_path.exists():
+        with _image_mapping_lock:
+            merged_image_mapping: Dict[str, Dict[str, str]] = {}
+            if mapping_path.exists():
+                try:
+                    with open(mapping_path, "r", encoding="utf-8") as f:
+                        existing_mapping = json.load(f)
+                        if isinstance(existing_mapping, dict):
+                            merged_image_mapping.update(existing_mapping)
+                except Exception as e:
+                    logger.warning(f"Failed to load existing image mapping: {e}")
+
+            merged_image_mapping.update(image_mapping)
+
+            tmp_fd, tmp_path = tempfile.mkstemp(
+                suffix=".json.tmp", dir=str(working_dir)
+            )
             try:
-                with open(mapping_path, "r", encoding="utf-8") as f:
-                    existing_mapping = json.load(f)
-                    if isinstance(existing_mapping, dict):
-                        merged_image_mapping.update(existing_mapping)
-            except Exception as e:
-                logger.warning(f"Failed to load existing image mapping: {e}")
-
-        merged_image_mapping.update(image_mapping)
-
-        with open(mapping_path, "w", encoding="utf-8") as f:
-            json.dump(merged_image_mapping, f, ensure_ascii=False, indent=2)
+                with os.fdopen(tmp_fd, "w", encoding="utf-8") as tmp_f:
+                    json.dump(
+                        merged_image_mapping,
+                        tmp_f,
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                os.replace(tmp_path, str(mapping_path))
+            except Exception:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
 
         skipped = (
             provider.picture_serializer._skipped
