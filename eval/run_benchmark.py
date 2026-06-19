@@ -85,7 +85,7 @@ def already_done(results, qid, mode, run_idx):
 
 def call_query_server(query: str, mode: str) -> dict:
     """POST /query to LightRAG server. Returns {response, latency_sec, error}."""
-    payload = {"query": query, "mode": mode, "stream": False}
+    payload = {"query": query, "mode": mode, "stream": False, "enable_rerank": False}
     t0 = time.time()
     try:
         r = requests.post(ENDPOINT, json=payload, timeout=TIMEOUT_SEC)
