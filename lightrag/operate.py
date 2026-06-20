@@ -3754,13 +3754,13 @@ async def _enrich_relations_from_junction(
 
 async def _perform_graph_ego_walk(
     query: str,
+    ll_keywords: str,
     hl_keywords: str,
     entities_vdb,
     knowledge_graph_inst,
     entity_chunks_storage,
     relation_chunks_storage,
     query_param,
-    query_embedding=None,
 ):
     """Topology-anchored ego walk on content graph with hl-keyword edge filter.
 
@@ -3805,11 +3805,15 @@ async def _perform_graph_ego_walk(
         return [], []
 
     # Step 1: Seed selection via VDB
+    # Use ll_keywords (entity names extracted by LLM) for semantic match,
+    # falling back to raw query when keywords unavailable.  The pre-computed
+    # query_embedding (from the raw query) is NOT passed here because it was
+    # derived from a different string and would produce wrong cosine scores.
+    entity_query = ll_keywords or query
     try:
         seed_hits = await entities_vdb.query(
-            query=query,
+            query=entity_query,
             top_k=seed_top_k,
-            query_embedding=query_embedding,
         ) or []
     except Exception as e:
         logger.warning(f"[graph_ego_walk] seed VDB query failed: {e}")
@@ -4173,13 +4177,13 @@ async def _perform_kg_search(
         try:
             final_entities, final_relations = await _perform_graph_ego_walk(
                 query=query,
+                ll_keywords=ll_keywords,
                 hl_keywords=hl_keywords,
                 entities_vdb=entities_vdb,
                 knowledge_graph_inst=knowledge_graph_inst,
                 entity_chunks_storage=entity_chunks_storage,
                 relation_chunks_storage=relation_chunks_storage,
                 query_param=query_param,
-                query_embedding=query_embedding,
             )
         except Exception as e:
             logger.warning(f"Graph ego-walk search failed: {e}")
