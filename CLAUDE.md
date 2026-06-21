@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-LightRAG is a Retrieval-Augmented Generation (RAG) framework that uses graph-based knowledge representation for enhanced information retrieval. The system extracts entities and relationships from documents, builds a knowledge graph, and uses multi-modal retrieval (local, global, hybrid, mix, naive) for queries.
+LightRAG is a Retrieval-Augmented Generation (RAG) framework that uses graph-based knowledge representation for enhanced information retrieval. The system extracts entities and relationships from documents, builds a knowledge graph, and uses multi-modal retrieval (naive, hybrid, mix, graph, stat, bypass) for queries.
 
 ## Core Architecture
 
@@ -34,27 +34,36 @@ Workspace isolation is implemented differently per storage type (subdirectories 
 
 ### Query Modes
 
-- **local**: Context-dependent retrieval focused on specific entities
-- **global**: Community/summary-based broad knowledge retrieval
-- **hybrid**: Combines local and global
 - **naive**: Direct vector search without graph
+- **hybrid**: Dual-level VDB search (ll_keywords for entities, hl_keywords for relations)
 - **mix**: Integrates KG and vector retrieval (recommended with reranker)
+- **graph**: Topology-anchored ego walk with BFS flow propagation + PPR refinement
+- **stat**: Direct graph statistics queries (bibliography, counts)
+- **bypass**: Pass-through mode (no retrieval)
+
+### Graph Mode Algorithm
+
+1. **Seed selection**: embed `ll_keywords` → VDB cosine search → top-K entities (default K=10)
+2. **BFS + PathRAG-style flow propagation**:
+   - `S(child) = α × S(parent) / degree(parent)` (hub damping)
+   - Adaptive depth: stop when `child_flow < θ` (default θ=0.05)
+   - Hub cap: top-N edges by weight when `degree > N` (default N=20)
+3. **PPR refinement**: warm-start from BFS flow, iterate to convergence (`r^(t+1) = (1-c)×e_q + c×W×r^(t)`)
+4. **HL keyword edge filter**: soft mode (boost matching edges) or strict mode (drop non-matching)
+5. **Entity ranking**: `rank = seed_cosine + λ × flow` (λ=0.1)
+
+Env vars: `GRAPH_SEED_TOP_K`, `GRAPH_FLOW_ALPHA`, `GRAPH_FLOW_THETA`, `GRAPH_FLOW_MAX_DEPTH`, `GRAPH_LARGE_TOP_N_EDGES`, `GRAPH_FLOW_ENTITY_LAMBDA`, `GRAPH_HL_KEYWORD_MODE`
 
 ## Development Commands
 
 ### Setup
 ```bash
-# Install core package (development mode)
-uv sync
-source .venv/bin/activate  # Or: .venv\Scripts\activate on Windows
+# Create virtual environment and install
+python -m venv .venv && source .venv/bin/activate
+pip install -e .
 
 # Install with API support
-uv sync --extra api
-
-# Install specific extras
-uv sync --extra offline-storage  # Storage backends
-uv sync --extra offline-llm      # LLM providers
-uv sync --extra test             # Testing dependencies
+pip install -e .[api]
 ```
 
 ### API Server
@@ -192,7 +201,7 @@ result = await rag.aquery(
     "Your question",
     param=QueryParam(
         mode="mix",                    # Recommended with reranker
-        top_k=60,                      # KG entities/relations to retrieve
+        top_k=40,                      # KG entities/relations to retrieve
         chunk_top_k=20,                # Text chunks to retrieve
         max_entity_tokens=6000,
         max_relation_tokens=8000,
