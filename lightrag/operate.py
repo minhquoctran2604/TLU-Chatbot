@@ -116,8 +116,14 @@ def _enrich_response_with_images(
        - Only replace if the marker uniquely maps to one image across source chunks
     3. Fallback: append unique images at end of response
     """
+    import os as _os
     import re as _re
     from urllib.parse import quote as _url_quote
+
+    # Temporary kill-switch: skip image enrichment entirely when disabled.
+    # Set ENABLE_IMAGE_ENRICH=false to strip [IMG_N] markers without injecting images.
+    if _os.getenv("ENABLE_IMAGE_ENRICH", "true").lower() in ("false", "0", "no"):
+        return _re.sub(r"\[IMG_[^\]]+\]", "", response)
 
     def _img_md(_fn: str) -> str:
         # URL-encode filename (spaces/dots/unicode) so markdown URL is not

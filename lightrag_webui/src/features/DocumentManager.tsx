@@ -1124,27 +1124,7 @@ export default function DocumentManager() {
       <CardContent className="flex-1 flex flex-col min-h-0 overflow-auto">
         <div className="flex justify-between items-center gap-2 mb-2">
           <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={scanDocuments}
-              side="bottom"
-              tooltip={t('documentPanel.documentManager.scanTooltip')}
-              size="sm"
-            >
-              <RefreshCwIcon /> {t('documentPanel.documentManager.scanButton')}
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => setShowPipelineStatus(true)}
-              side="bottom"
-              tooltip={t('documentPanel.documentManager.pipelineStatusTooltip')}
-              size="sm"
-              className={cn(
-                pipelineBusy && 'pipeline-busy'
-              )}
-            >
-              <ActivityIcon /> {t('documentPanel.documentManager.pipelineStatusButton')}
-            </Button>
+            {/* Hidden Scan/Retry and Pipeline buttons per request */}
           </div>
 
           {/* Pagination Controls in the middle */}

@@ -96,3 +96,6 @@ memory-bank
 
 # Claude Code
 CLAUDE.md
+
+# WebUI build artifacts copied to API static dir
+/api/webui/
