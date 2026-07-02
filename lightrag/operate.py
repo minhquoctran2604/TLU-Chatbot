@@ -3883,12 +3883,17 @@ async def _perform_graph_ego_walk(
                 break
             # Get edges for all frontier nodes
             try:
-                edges_dict = await knowledge_graph_inst.get_nodes_edges_batch(list(frontier))
+                edges_dict = await knowledge_graph_inst.get_nodes_edges_batch(list(frontier)) # lấy 1 đống cạnh của các node trong frontier, 
+                edges_dict = await knowledge_graph_inst.get_nodes_edges_batch(list(frontier)) # lấy 1 đống cạnh của các node trong frontier, 
             except Exception as e:
                 logger.warning(f"[graph_ego_walk] get_nodes_edges_batch failed: {e}")
                 break
 
             next_frontier = set()
+
+            # giới hạn hub trung tâm - node có nhiều cạnh
+
+            # giới hạn hub trung tâm - node có nhiều cạnh
             for node, edge_list in edges_dict.items():
                 if not edge_list:
                     continue
