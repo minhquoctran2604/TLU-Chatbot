@@ -3790,8 +3790,9 @@ async def _perform_graph_ego_walk(
     Env vars (int unless noted):
         GRAPH_SEED_TOP_K=10
         GRAPH_LARGE_TOP_N_EDGES=20      # per-node hub cap: node with >N edges → keep top-N by weight
-        GRAPH_FLOW_ALPHA=0.8            # float — flow decay per hop
-        GRAPH_FLOW_THETA=0.05           # float — stop expanding a branch when child flow < theta
+        GRAPH_FLOW_ALPHA=0.8            # float — BFS flow decay per hop
+        GRAPH_PPR_C=0.85                # float — PPR teleport/damping (0<c<1, higher = more restart)
+        GRAPH_FLOW_THETA=0.05           # float — stop expanding branch when child flow < theta; also PPR convergence tol
         GRAPH_FLOW_MAX_DEPTH=3          # hard safety cap on BFS depth
         GRAPH_FLOW_ENTITY_LAMBDA=0.5    # float — weight of flow vs seed-cosine in entity ranking
         GRAPH_HL_KEYWORD_MODE=soft      # "soft" (boost) or "strict" (drop non-matching)
@@ -3801,6 +3802,7 @@ async def _perform_graph_ego_walk(
     seed_top_k = int(_os.getenv("GRAPH_SEED_TOP_K", "10"))
     large_top_n = int(_os.getenv("GRAPH_LARGE_TOP_N_EDGES", "20"))
     flow_alpha = float(_os.getenv("GRAPH_FLOW_ALPHA", "0.8"))
+    ppr_c = float(_os.getenv("GRAPH_PPR_C", "0.85"))
     flow_theta = float(_os.getenv("GRAPH_FLOW_THETA", "0.05"))
     flow_max_depth = int(_os.getenv("GRAPH_FLOW_MAX_DEPTH", "3"))
     flow_entity_lambda = float(_os.getenv("GRAPH_FLOW_ENTITY_LAMBDA", "0.1"))
@@ -3867,11 +3869,15 @@ async def _perform_graph_ego_walk(
             continue
 
         # BFS expand with PathRAG-style flow propagation + adaptive early stopping.
-        # node_flow[node] = max flow received across all paths/seeds (take-max, not sum,
-        # to avoid double-counting nodes reachable via several seeds).
+        # node_flow[node] = cumulative flow across all seeds (pure sum, every node
+        # uses the same += rule). Each seed self-injects +1.0; each BFS step adds
+        # +child_flow = α × parent_flow / degree. Bridge nodes accumulate naturally;
+        # a seed that is also a bridge keeps both its self-injection and incoming
+        # flow from other seeds' BFS. cosine is captured separately in
+        # seed_score_map (line 3857), so final rank at line 4108 stays clean.
         frontier = {seed}
         visited_local = {seed}
-        node_flow[seed] = max(node_flow.get(seed, 0.0), 1.0)
+        node_flow[seed] = node_flow.get(seed, 0.0) + 1.0
         for _ in range(flow_max_depth):
             if not frontier:
                 break
@@ -3963,7 +3969,7 @@ async def _perform_graph_ego_walk(
             _prop = sum(
                 _v.get(nb, 0.0) / max(len(_adj.get(nb, [])), 1) for nb in _nbrs
             )
-            _v_new[_node] = (1.0 - flow_alpha) * _e.get(_node, 0.0) + flow_alpha * _prop
+            _v_new[_node] = (1.0 - ppr_c) * _e.get(_node, 0.0) + ppr_c * _prop
         _delta = sum(abs(_v_new.get(n, 0.0) - _v.get(n, 0.0)) for n in visited_entities)
         _v = _v_new
         if _delta < flow_theta:
@@ -4099,7 +4105,7 @@ async def _perform_graph_ego_walk(
     logger.info(
         f"[graph_ego_walk] seeds={len(seed_names)} | entities={len(final_entities)} "
         f"| edges={len(final_relations)} | hl_mode={hl_mode} | "
-        f"flow(α={flow_alpha},θ={flow_theta},maxdepth={flow_max_depth},cap={large_top_n},λ={flow_entity_lambda},agg=sum)"
+        f"flow(α={flow_alpha},θ={flow_theta},maxdepth={flow_max_depth},cap={large_top_n},λ={flow_entity_lambda},c={ppr_c},agg=sum)"
     )
     return final_entities, final_relations
 
