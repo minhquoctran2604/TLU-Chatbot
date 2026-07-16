@@ -1,233 +1,193 @@
-# TLU-Chatbot — LightRAG fork for university-domain QA
+# LightRAG Graph Retrieval Extension
 
-A specialized fork of [LightRAG](https://github.com/HKUDS/LightRAG) tuned for a
-university course corpus (lecture PDFs, slides, course notes in Vietnamese),
-backed by a Postgres + pgvector store and a graph layer that supports
-multi-hop retrieval and bridge-entity discovery.
+This repository extends [LightRAG](https://github.com/HKUDS/LightRAG) with a document-ingestion, graph-retrieval, and evaluation workflow for Vietnamese course materials. It combines chunk-level vector search with knowledge-graph traversal so that answers can use both semantic similarity and relationships across documents.
 
-The upstream LightRAG code lives in `LightRAG/`. This fork adds the data
-pipeline, benchmark harness, and graph-ego-walk retrieval mode on top.
+The upstream LightRAG implementation is retained in `LightRAG/`. The repository root contains the custom ingestion utilities, graph retrieval work, evaluation harness, datasets, diagrams, and supporting scripts.
 
----
+## System Overview
 
-## How the system flows
+![System architecture](architecture.png)
 
-```
-                 ┌──────────────┐
-  PDF / MD ────► │   Ingest     │  chunk → entity/relation extract (LLM)
-                 └──────┬───────┘
-                        │
-        ┌───────────────┼───────────────┐
-        ▼               ▼               ▼
-  ┌──────────┐    ┌──────────┐    ┌──────────┐
-  │  KV      │    │  Vector  │    │  Graph   │
-  │  (cache) │    │  (pgvec) │    │ (graphml)│
-  └────┬─────┘    └────┬─────┘    └────┬─────┘
-       └───────────────┼───────────────┘
-                       ▼
-                 ┌──────────────┐
-                 │   Query      │  embed → seed select → retrieve
-                 └──────┬───────┘
-                        ▼
-                 ┌──────────────┐
-                 │   LLM answer │
-                 └──────────────┘
-```
+The system has four stages:
 
-1. **Ingest** — PDFs and markdown from `PDF/`, `MD/` are chunked and fed to
-   an extraction LLM that emits `(entity, relation, description)` triples.
-2. **Storage** — chunks and LLM cache go to KV (JSON / Postgres), entity +
-   relation embeddings go to a vector store, the `(entity, relation)` graph
-   is persisted as a GraphML file and mirrored into Postgres.
-3. **Query** — the user question is embedded, used to pick seed entities,
-   then a retrieval mode (naive / hybrid / mix / graph / bm25) gathers
-   context, and the LLM writes the final answer.
+1. **Ingest**: source PDFs and Markdown files are parsed, chunked, and prepared for multimodal indexing.
+2. **Index**: chunks, embeddings, entities, relations, and image mappings are stored for retrieval.
+3. **Retrieve**: a query is routed through one of several retrieval modes to collect relevant text and graph context.
+4. **Generate**: the selected context is passed to an LLM, which returns an answer with source-aware context and inline image support when available.
 
----
+## Architecture
 
-## Improvements over upstream LightRAG
+![GraphRAG architecture](assets/graphrag_system_architecture.jpg)
 
-This fork ships four additions aimed at long-form, cross-subject academic QA.
+### Ingestion and indexing
 
-### 1. Graph ego-walk retrieval mode
+- `notebook_ingest.py` provides a document-ingestion flow with Docling support for PDF processing.
+- The pipeline creates text chunks, extracts entities and relations with an LLM, and records chunk-to-image mappings for image-aware responses.
+- The index can use JSON-backed storage for local development or PostgreSQL-backed implementations for production workloads.
+- Vector embeddings are stored separately from the knowledge graph, allowing semantic and graph-based retrieval to be combined at query time.
 
-A new `graph` mode that anchors retrieval on the topology of the knowledge
-graph instead of relying purely on vector similarity.
+### Storage layer
 
-- **Seed selection** — embed `ll_keywords` from the query → top-K
-  entities by cosine similarity.
-- **BFS + PathRAG-style flow propagation** — flow splits across neighbors
-  with `S(child) = α · S(parent) / degree(parent)`, capping hub nodes at
-  `GRAPH_LARGE_TOP_N_EDGES=20` to avoid hub domination.
-- **Adaptive depth** — propagation stops when `child_flow < θ` (default
-  `θ = 0.05`) so the walk doesn't bleed into peripheral nodes.
-- **PPR refinement** — the BFS flow warm-starts Personalized PageRank;
-  PPR redistributes mass until `δ = ‖v_new − v‖₁ < θ`. The column-stochastic
-  property of `Wᵀ` guarantees `δ` decreases at least geometrically
-  (`≤ cᵏ ‖Δ⁰‖₁`), so refinement converges in ~5–8 iterations.
-- **Entity ranking** — `rank(seed) = cos(seed) + λ · flow(seed)` with
-  `λ = 0.1`, blending vector similarity with graph-proximity signal.
+The repository is configured to work with the following storage roles:
 
-```
-Query ──► embed ──► top-K seeds ──► BFS flow ──► PPR refine ──► rank
-                                              ▲
-                                              │ warm-start
-                                              └──────────────┘
-```
+| Concern | Local or default option | Production-oriented option |
+| --- | --- | --- |
+| Key-value and LLM cache | JSON storage | PostgreSQL key-value storage |
+| Vector retrieval | Local/vector adapter | PostgreSQL with `pgvector` |
+| Knowledge graph | NetworkX / GraphML | PostgreSQL graph storage or Neo4j |
+| Document status | JSON status storage | PostgreSQL document-status storage |
 
-Configurable via env vars: `GRAPH_SEED_TOP_K`, `GRAPH_FLOW_ALPHA`,
-`GRAPH_PPR_C`, `GRAPH_FLOW_THETA`, `GRAPH_FLOW_MAX_DEPTH`,
-`GRAPH_LARGE_TOP_N_EDGES`, `GRAPH_FLOW_ENTITY_LAMBDA`,
-`GRAPH_HL_KEYWORD_MODE`.
+The `workspace` setting isolates key-value, vector, and document-status namespaces so multiple collections can share an installation without mixing their operational data.
 
-### 2. Knowledge-graph audit and cleanup
+## End-to-End Flow
 
-Academic PDFs produce noisy entities: page markers (`slide 12`, `trang 5`),
-`[IMG_xxx]` placeholders, single-letter fragments, and case-variant
-duplicates (`HTTP` vs `http`). `eval/audit_graph.py` classifies nodes into
-`delete / merge / keep`, and `eval/apply_cleanup.py` and
-`eval/cleanup_graph.py` rewrite the GraphML and Postgres rows in one pass
-(edge weights are summed during merges, descriptions are deduped).
+![Ingestion and retrieval flow](assets/flat_graphrag_flow.jpg)
 
-### 3. Multi-mode benchmark harness
+### 1. Prepare and ingest documents
 
-`eval/` is an end-to-end evaluation kit for comparing retrieval modes:
+Source files in `PDF/` and `MD/` are parsed into text and image content. The ingestion pipeline chunks the text, derives metadata, and sends chunks to the entity-and-relation extraction step.
 
-- **Query generation** — `gen_queries.py` builds 5 query types
-  (factoid, relational, broad, aggregate) from a chunked corpus.
-  `gen_2hop.py` mines paths A→B→C across subjects where A and C never
-  share a source file (so vector-only retrieval should fail). `gen_multihop.py`
-  builds bridge-entity queries whose chunks span 2+ subjects.
-- **Run** — `run_benchmark.py` POSTs each query × mode to the LightRAG
-  server, throttles to provider rate limits, records raw responses +
-  latency. `run_local.py` adds BM25 as a baseline mode without a server
-  roundtrip.
-- **Evaluate** — `evaluate_benchmark.py` scores with BERTScore
-  (`xlm-roberta-large`, `lang=vi`) and reports per-mode / per-type
-  aggregates with bootstrap 95 % CI. `evaluate_pairwise.py` runs LLM-as-judge
-  on five anonymized responses (A–E) with per-type rubrics and Borda
-  scoring. `evaluate_ragas.py` covers answer relevancy, correctness,
-  faithfulness, and context precision.
-- **Dashboard** — `build_dashboard.py` emits a single self-contained
-  `dashboard.html` with grouped bars for win count, mean rank, and
-  p50/p95 latency per mode.
+### 2. Build parallel indexes
 
-### 4. Resilient LLM extraction
+Each chunk is embedded for semantic retrieval. In parallel, extracted entities and relations form the knowledge graph. Image markers and mappings allow associated images to be reintroduced into the answer context when an indexed source supports them.
 
-A separate `extract_*_llm_func` decoupled from the query LLM lets a cheap
-extractor (small model) feed the index while a stronger model serves
-user queries. Failover chains (`ROUTER_FAILOVER_MODELS`) route around
-quota or 5xx errors without dropping documents mid-ingest. The
-`KeyError` on `graph.degree(node_id)` when a seed has no edges is
-handled so a single missing node doesn't abort a query.
+### 3. Retrieve context
 
----
+At query time, the system can use the following retrieval modes:
 
-## Repository layout
+- `naive`: vector-based retrieval over document chunks.
+- `hybrid`: combines local and global retrieval context.
+- `mix`: combines graph and vector context.
+- `graph`: starts from semantically selected seed entities, then expands through the knowledge graph using graph-aware ranking.
+- `bm25`: a lexical baseline used by the local evaluation workflow.
 
-```
+### 4. Generate the response
+
+The selected chunks and graph context are assembled into an LLM prompt. The answer can include source context and, where a matching chunk-image mapping exists, relevant images from the indexed material.
+
+## Project Contributions
+
+This repository adds the following work on top of the upstream LightRAG codebase:
+
+- **Graph ego-walk retrieval**: a `graph` query mode that selects seed entities from query embeddings, performs flow-based graph expansion, and applies Personalized PageRank refinement before ranking entities.
+- **Knowledge-graph quality tooling**: scripts in `eval/` to audit noisy entities, identify duplicate or malformed graph nodes, and apply cleanup plans to GraphML and PostgreSQL-backed data.
+- **Evaluation harness**: query generation, multi-mode benchmark execution, automatic evaluation, pairwise LLM judging, and dashboard generation for comparing retrieval modes.
+- **Resilient extraction configuration**: separate extraction and query LLM paths, provider failover support, and safeguards for graph traversal edge cases.
+- **Document and image-aware ingestion**: scripts and mappings that preserve the relationship between extracted text chunks and source images.
+
+## Repository Layout
+
+```text
 .
-├── LightRAG/        ← upstream library (core + WebUI + API server)
-├── eval/            ← benchmark harness, query generation, KG audit
-├── PDF/             ← source lecture PDFs
-├── MD/              ← source markdown notes (extracted for ingest)
-├── docs/            ← design notes (PPR convergence, Algorithm walkthrough)
+├── LightRAG/        Upstream LightRAG library, API server, and WebUI
+├── eval/            Benchmarking, graph audit, cleanup, and evaluation scripts
+├── src/             Data preparation and corpus analysis utilities
+├── PDF/             Source PDF corpus
+├── MD/              Source Markdown corpus
+├── assets/          Architecture and retrieval-flow diagrams
+├── docs/            Design notes and algorithm explanations
+├── figures/         Evaluation and pipeline figures
+├── notebook_ingest.py
 └── README.md
 ```
 
----
+## Quick Start
 
-## Quick start
+### Prerequisites
 
-### Server (local)
+- Python 3.10 or newer
+- Bun, when building or running the WebUI
+- An LLM provider and embedding configuration
+- PostgreSQL with `pgvector` and/or a graph backend when using the production storage path
+
+### Install and run the API
 
 ```bash
 cd LightRAG
-uv sync --extra api               # or: pip install -e ".[api]"
-cp env.example .env               # fill LLM / embedding / Postgres creds
-cd lightrag_webui && bun install --frozen-lockfile && bun run build && cd ..
-source venv/bin/activate          # Windows: venv\Scripts\activate
+uv sync --extra api
+cp env.example .env
+
+cd lightrag_webui
+bun install --frozen-lockfile
+bun run build
+
+cd ..
 python -m lightrag.api.lightrag_server
-# Server now listening on http://localhost:9621
 ```
 
-### Ingest
+Configure the required model, embedding, and storage values in `LightRAG/.env` before starting the server. For an editable Python installation, use `pip install -e ".[api]"` from `LightRAG/` instead of `uv sync --extra api`.
+
+### Ingest content programmatically
 
 ```python
 import asyncio
+
 from lightrag import LightRAG, QueryParam
 from lightrag.llm.openai import gpt_4o_mini_complete, openai_embed
 
-async def main():
+
+async def main() -> None:
     rag = LightRAG(
         working_dir="./rag_storage",
         llm_model_func=gpt_4o_mini_complete,
         embedding_func=openai_embed,
     )
-    await rag.initialize_storages()           # required
-    await rag.ainsert(["doc1 text", "doc2 text"])
-    print(await rag.aquery("...", param=QueryParam(mode="graph")))
+    await rag.initialize_storages()
+    await rag.ainsert(["Document text to index"])
+
+    answer = await rag.aquery(
+        "Ask a question about the indexed content.",
+        param=QueryParam(mode="graph"),
+    )
+    print(answer)
+
 
 asyncio.run(main())
 ```
 
-### Benchmark
+### Evaluate retrieval modes
 
 ```bash
 cd eval
-python run_benchmark.py                        # raw responses
-python evaluate_benchmark.py --bootstrap 1000  # BERTScore + 95% CI
-python evaluate_pairwise.py                    # LLM-as-judge, Borda
-python build_dashboard.py                      # → dashboard.html
+python run_benchmark.py
+python evaluate_benchmark.py --bootstrap 1000
+python evaluate_pairwise.py
+python build_dashboard.py
 ```
 
-### Graph cleanup
+The evaluation scripts write raw responses, metrics, and visual summaries beneath `eval/`.
+
+### Audit and clean the knowledge graph
 
 ```bash
 cd eval
-python audit_graph.py     # → cleanup_plan.json  (dry-run)
-python apply_cleanup.py   # rewrite GraphML + Postgres rows
+python audit_graph.py
+python apply_cleanup.py
 ```
 
----
+Run the audit before applying cleanup. The cleanup workflow updates graph artifacts and related PostgreSQL rows according to the generated plan.
 
-## Storage backends used
+## Configuration Notes
 
-- **KV** — `JsonKVStorage` for cache, `PGKVStorage` for production runs.
-- **Vector** — `PGVectorStorage` with `pgvector`, embedding model
-  `microsoft/harrier-oss-v1-270m` (640-dim) or `BAAI/bge-m3` (1024-dim).
-- **Graph** — `NetworkXStorage` (GraphML on disk) for development,
-  `PGGraphStorage` for production.
-- **Doc status** — `PGDocStatusStorage` tracks per-document processing
-  state so partial ingests resume cleanly.
+- Copy `env.example` in `LightRAG/` to `.env` and provide only the services required by the selected LLM, embedding model, and storage adapters.
+- Use the project configuration and Docker files when provisioning database dependencies locally or in containers.
+- Refer to `LightRAG/docs/OfflineDeployment.md` for offline deployment guidance.
+- The WebUI is located in `LightRAG/lightrag_webui/` and uses Bun for dependency management, development, builds, and tests.
 
-`workspace` parameter gives every LightRAG instance isolated KV /
-vector / status namespaces; graph storage uses collection-name
-prefixes.
+## Development
 
----
+Run checks from the `LightRAG/` directory:
 
-## Operational notes
+```bash
+ruff check .
+python -m pytest tests
 
-- **9router** is the local LLM proxy (`http://localhost:20128/v1`)
-  used by both the server and `eval/llm_call.py` so BM25 and LightRAG
-  go through the same provider path.
-- **Rate limits** — `eval/run_benchmark.py` defaults to a 2 s throttle
-  between calls to stay under NIM 40 RPM.
-- **Eval results layout** — per-type artifacts land in
-  `eval/results/{type}/` (`results_raw.json`, `results_eval.json`,
-  `results_chunks.json`, `results_pairwise.json`).
-- **Offline install** — see `LightRAG/docs/OfflineDeployment.md` for
-  pre-caching model weights and Python wheels for air-gapped deploys.
+cd lightrag_webui
+bun test
+```
 
----
+Use `python -m pytest tests --run-integration` only when the required external services and `LIGHTRAG_*` environment variables are available.
 
-## References
+## Acknowledgements
 
-- Guo et al., *LightRAG: Simple and Fast Retrieval-Augmented Generation*
-  (arXiv 2410.05779).
-- Edge et al., *Personalized PageRank* — used for PPR refinement in
-  `graph` mode.
-- See `docs/ppr_convergence.md` for the formal proof that the L1-norm
-  stop condition decreases geometrically under the column-stochastic
-  transition matrix.
+This project builds on [LightRAG](https://github.com/HKUDS/LightRAG), released under the MIT License. See the upstream project for the base framework and its broader provider and storage support.
