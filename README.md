@@ -6,8 +6,6 @@ The upstream LightRAG implementation is retained in `LightRAG/`. The repository 
 
 ## System Overview
 
-![System architecture](figures/fig_2_1_1_overview.png)
-
 The system has four stages:
 
 1. **Ingest**: source PDFs and Markdown files are parsed, chunked, and prepared for multimodal indexing.
@@ -17,9 +15,11 @@ The system has four stages:
 
 ## Architecture
 
-![Ingestion and knowledge-graph construction](figures/fig_2_1_4_ingest.png)
+![System architecture](figures/fig_2_1_1_overview.png)
 
 ### Ingestion and indexing
+
+![Ingestion and knowledge-graph construction](figures/fig_2_1_4_ingest.png)
 
 - `notebook_ingest.py` provides a document-ingestion flow with Docling support for PDF processing.
 - The pipeline creates text chunks, extracts entities and relations with an LLM, and records chunk-to-image mappings for image-aware responses.
@@ -41,7 +41,7 @@ The `workspace` setting isolates key-value, vector, and document-status namespac
 
 ## End-to-End Flow
 
-![Graph ego-walk retrieval flow](figures/fig_1_7_egowalk.png)
+![RAG retrieval and generation flow](figures/fig_1_3_1_rag.png)
 
 ### 1. Prepare and ingest documents
 
