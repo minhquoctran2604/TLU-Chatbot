@@ -1,117 +1,233 @@
-# Hệ thống hỏi đáp thông minh dựa trên LightRAG cho dữ liệu Trường Đại học Thủy Lợi
+# TLU-Chatbot — LightRAG fork for university-domain QA
 
-> Đồ án tốt nghiệp — Trần Văn Minh Quốc (64HTTT1), GVHD: TS. Lê Thị Tú Kiên
-> Khoa Công nghệ thông tin, Trường Đại học Thủy Lợi
+A specialized fork of [LightRAG](https://github.com/HKUDS/LightRAG) tuned for a
+university course corpus (lecture PDFs, slides, course notes in Vietnamese),
+backed by a Postgres + pgvector store and a graph layer that supports
+multi-hop retrieval and bridge-entity discovery.
 
-Hệ thống chatbot hỏi đáp trên kho tài liệu học tập (bài giảng, giáo trình) của Trường Đại học Thủy Lợi, xây dựng trên khung **Sinh tăng cường truy hồi dựa trên đồ thị tri thức** (Graph-based RAG) [LightRAG](https://github.com/HKUDS/LightRAG). Đồ án bổ sung một **chế độ truy hồi theo đồ thị (graph ego-walk) tự thiết kế** và một **khung đánh giá benchmark** so sánh nhiều chế độ truy hồi.
-
-> Bản README gốc của framework LightRAG (HKU) được giữ tại [`README_LightRAG_upstream.md`](./README_LightRAG_upstream.md).
-
----
-
-## 1. Đóng góp của đồ án
-
-Phần đóng góp riêng (so với LightRAG gốc) nằm ở các tệp:
-
-| Tệp | Đóng góp |
-|---|---|
-| `lightrag/operate.py` | **Chế độ graph (ego-walk + PPR)** — truy hồi theo cấu trúc đồ thị: gieo hạt từ từ khóa, lan truyền dòng chảy (flow) bằng BFS, tinh chỉnh bằng Personalized PageRank, cộng dồn flow đa nguồn để thưởng nút cầu nối |
-| `lightrag/prompt.py` | Prompt trích xuất tùy chỉnh cho slide tiếng Việt: lọc nhãn bố cục slide, bộ loại thực thể cố định, lượt trích xuất bổ sung (gleaning) |
-| `eval/` | Khung đánh giá tự động: sinh câu hỏi đa loại, chạy benchmark đa chế độ, chấm cặp bằng LLM-as-judge, dashboard kết quả |
-
-### Chế độ graph (ego-walk) — 5 bước
-
-1. **Gieo hạt:** nhúng từ khóa mức thấp của câu hỏi, chọn K thực thể gần nhất trên kho vector làm seed.
-2. **BFS lan flow:** dòng chảy giảm dần qua mỗi bước theo hệ số α và chia cho bậc nút để hạn chế nút bậc cao; flow từ nhiều seed được cộng dồn (theo định lý tuyến tính của PPR).
-3. **Tinh chỉnh PPR:** chạy lặp Personalized PageRank trên đồ thị con tới hội tụ, thưởng nút cầu cách seed nhiều bước.
-4. **Lọc và xếp hạng:** lọc cạnh theo từ khóa, xếp hạng thực thể theo `cosine + λ·flow`.
-5. **Thu chunk:** lấy các đoạn văn bản nguồn của thực thể và cạnh đã chọn làm ngữ cảnh.
+The upstream LightRAG code lives in `LightRAG/`. This fork adds the data
+pipeline, benchmark harness, and graph-ego-walk retrieval mode on top.
 
 ---
 
-## 2. Năm chế độ truy hồi được so sánh
+## How the system flows
 
-| Chế độ | Mô tả |
-|---|---|
-| `bm25` | Baseline từ vựng (Okapi BM25), lập chỉ mục độc lập trong `eval/` |
-| `naive` | Tìm kiếm vector thuần |
-| `hybrid` | Truy hồi hai mức trên đồ thị (từ khóa thực thể + từ khóa quan hệ) |
-| `mix` | Hợp nhất truy hồi đồ thị và vector |
-| `graph` | **Ego-walk + PPR (đóng góp của đồ án)** |
-
----
-
-## 3. Cài đặt
-
-```bash
-python -m venv .venv
-source .venv/bin/activate         # Windows: .venv\Scripts\activate
-pip install -e ".[api]"
-
-cp env.example .env               # điền cấu hình LLM / embedding / cơ sở dữ liệu
+```
+                 ┌──────────────┐
+  PDF / MD ────► │   Ingest     │  chunk → entity/relation extract (LLM)
+                 └──────┬───────┘
+                        │
+        ┌───────────────┼───────────────┐
+        ▼               ▼               ▼
+  ┌──────────┐    ┌──────────┐    ┌──────────┐
+  │  KV      │    │  Vector  │    │  Graph   │
+  │  (cache) │    │  (pgvec) │    │ (graphml)│
+  └────┬─────┘    └────┬─────┘    └────┬─────┘
+       └───────────────┼───────────────┘
+                       ▼
+                 ┌──────────────┐
+                 │   Query      │  embed → seed select → retrieve
+                 └──────┬───────┘
+                        ▼
+                 ┌──────────────┐
+                 │   LLM answer │
+                 └──────────────┘
 ```
 
-Thành phần sử dụng: PostgreSQL + pgvector (vector), NetworkX/GraphML (đồ thị),
-mô hình nhúng `BAAI/bge-m3`, mô hình sinh Gemma 3n qua Ollama, Cohere rerank (tùy chọn).
+1. **Ingest** — PDFs and markdown from `PDF/`, `MD/` are chunked and fed to
+   an extraction LLM that emits `(entity, relation, description)` triples.
+2. **Storage** — chunks and LLM cache go to KV (JSON / Postgres), entity +
+   relation embeddings go to a vector store, the `(entity, relation)` graph
+   is persisted as a GraphML file and mirrored into Postgres.
+3. **Query** — the user question is embedded, used to pick seed entities,
+   then a retrieval mode (naive / hybrid / mix / graph / bm25) gathers
+   context, and the LLM writes the final answer.
 
 ---
 
-## 4. Chạy hệ thống
+## Improvements over upstream LightRAG
 
-```bash
-lightrag-server                                     # production
-uvicorn lightrag.api.lightrag_server:app --reload   # development
+This fork ships four additions aimed at long-form, cross-subject academic QA.
+
+### 1. Graph ego-walk retrieval mode
+
+A new `graph` mode that anchors retrieval on the topology of the knowledge
+graph instead of relying purely on vector similarity.
+
+- **Seed selection** — embed `ll_keywords` from the query → top-K
+  entities by cosine similarity.
+- **BFS + PathRAG-style flow propagation** — flow splits across neighbors
+  with `S(child) = α · S(parent) / degree(parent)`, capping hub nodes at
+  `GRAPH_LARGE_TOP_N_EDGES=20` to avoid hub domination.
+- **Adaptive depth** — propagation stops when `child_flow < θ` (default
+  `θ = 0.05`) so the walk doesn't bleed into peripheral nodes.
+- **PPR refinement** — the BFS flow warm-starts Personalized PageRank;
+  PPR redistributes mass until `δ = ‖v_new − v‖₁ < θ`. The column-stochastic
+  property of `Wᵀ` guarantees `δ` decreases at least geometrically
+  (`≤ cᵏ ‖Δ⁰‖₁`), so refinement converges in ~5–8 iterations.
+- **Entity ranking** — `rank(seed) = cos(seed) + λ · flow(seed)` with
+  `λ = 0.1`, blending vector similarity with graph-proximity signal.
+
+```
+Query ──► embed ──► top-K seeds ──► BFS flow ──► PPR refine ──► rank
+                                              ▲
+                                              │ warm-start
+                                              └──────────────┘
 ```
 
-Truy vấn theo từng chế độ qua tham số `mode` (`bm25` / `naive` / `hybrid` / `mix` / `graph`).
+Configurable via env vars: `GRAPH_SEED_TOP_K`, `GRAPH_FLOW_ALPHA`,
+`GRAPH_PPR_C`, `GRAPH_FLOW_THETA`, `GRAPH_FLOW_MAX_DEPTH`,
+`GRAPH_LARGE_TOP_N_EDGES`, `GRAPH_FLOW_ENTITY_LAMBDA`,
+`GRAPH_HL_KEYWORD_MODE`.
+
+### 2. Knowledge-graph audit and cleanup
+
+Academic PDFs produce noisy entities: page markers (`slide 12`, `trang 5`),
+`[IMG_xxx]` placeholders, single-letter fragments, and case-variant
+duplicates (`HTTP` vs `http`). `eval/audit_graph.py` classifies nodes into
+`delete / merge / keep`, and `eval/apply_cleanup.py` and
+`eval/cleanup_graph.py` rewrite the GraphML and Postgres rows in one pass
+(edge weights are summed during merges, descriptions are deduped).
+
+### 3. Multi-mode benchmark harness
+
+`eval/` is an end-to-end evaluation kit for comparing retrieval modes:
+
+- **Query generation** — `gen_queries.py` builds 5 query types
+  (factoid, relational, broad, aggregate) from a chunked corpus.
+  `gen_2hop.py` mines paths A→B→C across subjects where A and C never
+  share a source file (so vector-only retrieval should fail). `gen_multihop.py`
+  builds bridge-entity queries whose chunks span 2+ subjects.
+- **Run** — `run_benchmark.py` POSTs each query × mode to the LightRAG
+  server, throttles to provider rate limits, records raw responses +
+  latency. `run_local.py` adds BM25 as a baseline mode without a server
+  roundtrip.
+- **Evaluate** — `evaluate_benchmark.py` scores with BERTScore
+  (`xlm-roberta-large`, `lang=vi`) and reports per-mode / per-type
+  aggregates with bootstrap 95 % CI. `evaluate_pairwise.py` runs LLM-as-judge
+  on five anonymized responses (A–E) with per-type rubrics and Borda
+  scoring. `evaluate_ragas.py` covers answer relevancy, correctness,
+  faithfulness, and context precision.
+- **Dashboard** — `build_dashboard.py` emits a single self-contained
+  `dashboard.html` with grouped bars for win count, mean rank, and
+  p50/p95 latency per mode.
+
+### 4. Resilient LLM extraction
+
+A separate `extract_*_llm_func` decoupled from the query LLM lets a cheap
+extractor (small model) feed the index while a stronger model serves
+user queries. Failover chains (`ROUTER_FAILOVER_MODELS`) route around
+quota or 5xx errors without dropping documents mid-ingest. The
+`KeyError` on `graph.degree(node_id)` when a seed has no edges is
+handled so a single missing node doesn't abort a query.
 
 ---
 
-## 5. Đánh giá (benchmark)
+## Repository layout
 
-Toàn bộ quy trình nằm trong thư mục `eval/`:
+```
+.
+├── LightRAG/        ← upstream library (core + WebUI + API server)
+├── eval/            ← benchmark harness, query generation, KG audit
+├── PDF/             ← source lecture PDFs
+├── MD/              ← source markdown notes (extracted for ingest)
+├── docs/            ← design notes (PPR convergence, Algorithm walkthrough)
+└── README.md
+```
+
+---
+
+## Quick start
+
+### Server (local)
+
+```bash
+cd LightRAG
+uv sync --extra api               # or: pip install -e ".[api]"
+cp env.example .env               # fill LLM / embedding / Postgres creds
+cd lightrag_webui && bun install --frozen-lockfile && bun run build && cd ..
+source venv/bin/activate          # Windows: venv\Scripts\activate
+python -m lightrag.api.lightrag_server
+# Server now listening on http://localhost:9621
+```
+
+### Ingest
+
+```python
+import asyncio
+from lightrag import LightRAG, QueryParam
+from lightrag.llm.openai import gpt_4o_mini_complete, openai_embed
+
+async def main():
+    rag = LightRAG(
+        working_dir="./rag_storage",
+        llm_model_func=gpt_4o_mini_complete,
+        embedding_func=openai_embed,
+    )
+    await rag.initialize_storages()           # required
+    await rag.ainsert(["doc1 text", "doc2 text"])
+    print(await rag.aquery("...", param=QueryParam(mode="graph")))
+
+asyncio.run(main())
+```
+
+### Benchmark
 
 ```bash
 cd eval
-python gen_queries.py         # sinh câu hỏi đơn-môn theo từng loại
-python gen_2hop.py            # sinh câu hỏi suy luận bắc cầu liên môn (2-hop)
-python run_benchmark.py       # gửi mỗi câu hỏi tới 5 chế độ, thu câu trả lời
-python evaluate_pairwise.py   # chấm cặp bằng LLM-as-judge, tổng hợp điểm Borda
-python build_dashboard.py     # dựng dashboard kết quả
+python run_benchmark.py                        # raw responses
+python evaluate_benchmark.py --bootstrap 1000  # BERTScore + 95% CI
+python evaluate_pairwise.py                    # LLM-as-judge, Borda
+python build_dashboard.py                      # → dashboard.html
 ```
 
-Bộ câu hỏi và phương pháp chấm:
-- 576 câu hỏi thuộc 5 loại (factoid, relational, broad, aggregate, 2-hop liên môn).
-- Chấm cặp ẩn danh bằng mô hình ngôn ngữ làm giám khảo, xáo trộn vị trí để giảm thiên lệch.
-- Hai chỉ số: số lần xếp hạng nhất (win count) và thứ hạng trung bình (mean rank).
+### Graph cleanup
 
----
-
-## 6. Kết quả chính
-
-Trên benchmark 576 câu × 5 chế độ = 2.880 câu trả lời:
-
-- Các chế độ dựa trên đồ thị (graph, hybrid, mix) vượt trội hai baseline từ vựng (bm25) và vector thuần (naive).
-- **Chế độ graph đạt số lần xếp hạng nhất cao nhất (167/576)** và dẫn đầu ở 4/5 loại câu hỏi theo win count, đặc biệt mạnh ở nhóm câu hỏi suy luận bắc cầu liên môn (2-hop).
-
----
-
-## 7. Cấu trúc thư mục chính
-
-```
-lightrag/        # mã nguồn framework (đóng góp ở operate.py, prompt.py)
-  ├─ operate.py  # logic truy hồi 5 chế độ + graph ego-walk + PPR
-  ├─ prompt.py   # prompt trích xuất tùy chỉnh tiếng Việt
-  ├─ kg/         # các backend lưu trữ (NetworkX, PostgreSQL, ...)
-  └─ llm/        # các bộ kết nối mô hình ngôn ngữ
-eval/            # khung đánh giá: sinh câu hỏi, benchmark, chấm cặp, dashboard
-api/             # máy chủ FastAPI + WebUI
+```bash
+cd eval
+python audit_graph.py     # → cleanup_plan.json  (dry-run)
+python apply_cleanup.py   # rewrite GraphML + Postgres rows
 ```
 
 ---
 
-## 8. Ghi nhận
+## Storage backends used
 
-Đồ án xây dựng trên framework mã nguồn mở [LightRAG](https://github.com/HKUDS/LightRAG)
-(Guo và cộng sự, HKU, 2024). Phần đóng góp riêng của đồ án được nêu ở Mục 1.
-Giấy phép gốc của LightRAG được giữ trong tệp [`LICENSE`](./LICENSE).
+- **KV** — `JsonKVStorage` for cache, `PGKVStorage` for production runs.
+- **Vector** — `PGVectorStorage` with `pgvector`, embedding model
+  `microsoft/harrier-oss-v1-270m` (640-dim) or `BAAI/bge-m3` (1024-dim).
+- **Graph** — `NetworkXStorage` (GraphML on disk) for development,
+  `PGGraphStorage` for production.
+- **Doc status** — `PGDocStatusStorage` tracks per-document processing
+  state so partial ingests resume cleanly.
+
+`workspace` parameter gives every LightRAG instance isolated KV /
+vector / status namespaces; graph storage uses collection-name
+prefixes.
+
+---
+
+## Operational notes
+
+- **9router** is the local LLM proxy (`http://localhost:20128/v1`)
+  used by both the server and `eval/llm_call.py` so BM25 and LightRAG
+  go through the same provider path.
+- **Rate limits** — `eval/run_benchmark.py` defaults to a 2 s throttle
+  between calls to stay under NIM 40 RPM.
+- **Eval results layout** — per-type artifacts land in
+  `eval/results/{type}/` (`results_raw.json`, `results_eval.json`,
+  `results_chunks.json`, `results_pairwise.json`).
+- **Offline install** — see `LightRAG/docs/OfflineDeployment.md` for
+  pre-caching model weights and Python wheels for air-gapped deploys.
+
+---
+
+## References
+
+- Guo et al., *LightRAG: Simple and Fast Retrieval-Augmented Generation*
+  (arXiv 2410.05779).
+- Edge et al., *Personalized PageRank* — used for PPR refinement in
+  `graph` mode.
+- See `docs/ppr_convergence.md` for the formal proof that the L1-norm
+  stop condition decreases geometrically under the column-stochastic
+  transition matrix.
