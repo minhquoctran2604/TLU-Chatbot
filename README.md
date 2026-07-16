@@ -6,7 +6,7 @@ The upstream LightRAG implementation is retained in `LightRAG/`. The repository 
 
 ## System Overview
 
-![System architecture](architecture.png)
+![System architecture](figures/fig_2_1_1_overview.png)
 
 The system has four stages:
 
@@ -17,7 +17,7 @@ The system has four stages:
 
 ## Architecture
 
-![GraphRAG architecture](assets/graphrag_system_architecture.jpg)
+![Ingestion and knowledge-graph construction](figures/fig_2_1_4_ingest.png)
 
 ### Ingestion and indexing
 
@@ -41,7 +41,7 @@ The `workspace` setting isolates key-value, vector, and document-status namespac
 
 ## End-to-End Flow
 
-![Ingestion and retrieval flow](assets/flat_graphrag_flow.jpg)
+![Graph ego-walk retrieval flow](figures/fig_1_7_egowalk.png)
 
 ### 1. Prepare and ingest documents
 
