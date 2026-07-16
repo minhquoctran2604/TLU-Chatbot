@@ -34,9 +34,13 @@ The system exposes `naive`, `hybrid`, `mix`, `graph`, and `bm25` retrieval modes
 
 The `graph` mode starts from entities selected by query similarity, then expands a local subgraph with a BFS-style flow rule. Each hop decays the parent flow by `alpha / degree(parent)`, which reduces the influence of high-degree hubs. Expansion stops when the flow falls below a threshold or the configured depth limit is reached. The implementation is in [`_perform_graph_ego_walk`](LightRAG/lightrag/operate.py#L3746).
 
+![BFS flow propagation](figures/fig_1_7_egowalk.png)
+
 ### 2. PPR refinement of the BFS subgraph
 
 The BFS flow initializes a Personalized PageRank iteration over the collected subgraph. This refinement redistributes score through graph structure, improving the ranking of bridge entities that may lie several hops from the initial seeds. The final ranking combines query similarity and graph-flow score; `GRAPH_FLOW_ALPHA`, `GRAPH_PPR_C`, `GRAPH_FLOW_THETA`, and related variables control the method.
+
+![PPR refinement](figures/fig_ppr_en.png)
 
 ### 3. Mixed graph-vector retrieval
 
