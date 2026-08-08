@@ -1,8 +1,10 @@
-# LightRAG Graph Retrieval Extension
+# TLU-Chatbot
 
-> A graph-enhanced Retrieval-Augmented Generation system for Vietnamese technical documents, built on [LightRAG](https://github.com/HKUDS/LightRAG).
+> TLU-Chatbot is an open-source educational RAG system designed to help university students retrieve and reason over Vietnamese academic and institutional documents. Built on [LightRAG](https://github.com/HKUDS/LightRAG), it adds graph-based multi-hop retrieval using BFS flow propagation and Personalized PageRank.
 
 ## Abstract
+
+TLU-Chatbot was developed around a real university use case: making fragmented Vietnamese academic documents easier for students to search and understand. Many questions require combining information across multiple sections or documents, motivating the project's graph-based retrieval approach.
 
 This project extends LightRAG with a graph-oriented retrieval method for questions that require evidence beyond a single semantically similar chunk. The system constructs a knowledge graph from document chunks, combines graph and vector evidence through `mix` retrieval, and introduces a topology-aware `graph` mode based on BFS flow propagation and Personalized PageRank (PPR). The repository also includes ingestion, graph-cleaning, and multi-mode evaluation tooling.
 
