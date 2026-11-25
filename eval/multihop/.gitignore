@@ -1,4 +1,3 @@
-data/
 rag_*/
 *.server.log
 __pycache__/
