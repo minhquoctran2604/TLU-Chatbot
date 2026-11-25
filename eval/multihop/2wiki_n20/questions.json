@@ -1,0 +1,258 @@
+[
+ {
+  "id": "86947bc20bdb11eba7f7acde48001122",
+  "question": "Where did the composer of song The Queen Of Spades (Prokofiev) graduate from?",
+  "answer": "Saint Petersburg Conservatory",
+  "hops": 2,
+  "gold": [
+   "mh-5a4fa6f555fa",
+   "mh-9de5b2731af9"
+  ],
+  "bridge": [
+   "Sergei Prokofiev"
+  ]
+ },
+ {
+  "id": "6789c1140bdc11eba7f7acde48001122",
+  "question": "Where was the place of burial of Li Sujie's father?",
+  "answer": "Qianling Mausoleum",
+  "hops": 2,
+  "gold": [
+   "mh-5ad7b2158f39",
+   "mh-72fffb3140ab"
+  ],
+  "bridge": [
+   "Gaozong"
+  ]
+ },
+ {
+  "id": "f05423560bda11eba7f7acde48001122",
+  "question": "Where did Saw Thanda's husband die?",
+  "answer": "Mrauk U",
+  "hops": 2,
+  "gold": [
+   "mh-710f760190a0",
+   "mh-cabd086dd6a0"
+  ],
+  "bridge": [
+   "Dikkha"
+  ]
+ },
+ {
+  "id": "6837abca0bb011ebab90acde48001122",
+  "question": "Who is Princess Adrienne, Duchess Of Blekinge's mother?",
+  "answer": "Princess Madeleine, Duchess of Hälsingland and Gästrikland",
+  "hops": 2,
+  "gold": [
+   "mh-eabb82b3bc07",
+   "mh-fbc0790457b0"
+  ],
+  "bridge": [
+   "Christopher O'Neill"
+  ]
+ },
+ {
+  "id": "e56744640bda11eba7f7acde48001122",
+  "question": "Where did the director of film Yang ± Yin: Gender In Chinese Cinema study?",
+  "answer": "Hong Kong Baptist College",
+  "hops": 2,
+  "gold": [
+   "mh-c5aed2594c42",
+   "mh-b4dfcdcdb513"
+  ],
+  "bridge": [
+   "Stanley Kwan"
+  ]
+ },
+ {
+  "id": "06a649120bdc11eba7f7acde48001122",
+  "question": "Which country the director of film A Man Called Hero is from?",
+  "answer": "China",
+  "hops": 2,
+  "gold": [
+   "mh-09ffcda3ebf3",
+   "mh-5e615e6a2b4e"
+  ],
+  "bridge": [
+   "Andrew Lau"
+  ]
+ },
+ {
+  "id": "e979075e0bda11eba7f7acde48001122",
+  "question": "Where was the place of burial of Ælfwine Of Deira's father?",
+  "answer": "Whitby Abbey",
+  "hops": 2,
+  "gold": [
+   "mh-23b2967ae6bb",
+   "mh-54bf16520f4e"
+  ],
+  "bridge": []
+ },
+ {
+  "id": "d89acde60bda11eba7f7acde48001122",
+  "question": "Which country Damrong Rajanubhab's father is from?",
+  "answer": "Siam",
+  "hops": 2,
+  "gold": [
+   "mh-fd7b4744bf50",
+   "mh-86f744128322"
+  ],
+  "bridge": [
+   "Mongkut"
+  ]
+ },
+ {
+  "id": "5df2969e0baf11ebab90acde48001122",
+  "question": "Who is Frederick Dickens's father?",
+  "answer": "John Dickens",
+  "hops": 2,
+  "gold": [
+   "mh-216239fba640",
+   "mh-d77b59f5b7bd"
+  ],
+  "bridge": [
+   "Elizabeth Dickens"
+  ]
+ },
+ {
+  "id": "63a0ba880bd911eba7f7acde48001122",
+  "question": "Where did the director of film Hurricane At Pilgrim Hill die?",
+  "answer": "Newport Beach",
+  "hops": 2,
+  "gold": [
+   "mh-7e4a6ee871e2",
+   "mh-cfd16d877803"
+  ],
+  "bridge": [
+   "Richard L. Bare"
+  ]
+ },
+ {
+  "id": "18a5ef800bde11eba7f7acde48001122",
+  "question": "Where was the father of David Ogilvy, 12Th Earl Of Airlie born?",
+  "answer": "Florence, Italy",
+  "hops": 2,
+  "gold": [
+   "mh-93a838934ad7",
+   "mh-9c15b3d3ec33"
+  ],
+  "bridge": [
+   "David Ogilvy, 11th Earl of Airlie"
+  ]
+ },
+ {
+  "id": "74b1498a0bdb11eba7f7acde48001122",
+  "question": "What nationality is the director of film Overland Adventure?",
+  "answer": "Australian",
+  "hops": 2,
+  "gold": [
+   "mh-803817db2e91",
+   "mh-684ff5058971"
+  ],
+  "bridge": [
+   "Ken G. Hall"
+  ]
+ },
+ {
+  "id": "24672c120bde11eba7f7acde48001122",
+  "question": "Where was the husband of Virginia Foster Durr born?",
+  "answer": "Montgomery",
+  "hops": 2,
+  "gold": [
+   "mh-f9aa301ea25d",
+   "mh-ec48b705fff6"
+  ],
+  "bridge": [
+   "Clifford Durr"
+  ]
+ },
+ {
+  "id": "8b9607820bd911eba7f7acde48001122",
+  "question": "Who is the father of the director of film Tiger Cage (Film)?",
+  "answer": "Yuen Siu-tien",
+  "hops": 2,
+  "gold": [
+   "mh-f907b92d9c59",
+   "mh-4affe66cf403"
+  ],
+  "bridge": [
+   "Yuen Woo-ping"
+  ]
+ },
+ {
+  "id": "ee212a820bdc11eba7f7acde48001122",
+  "question": "What is the place of birth of the director of film The Trail Of The Lonesome Pine (1923 Film)?",
+  "answer": "Richmond",
+  "hops": 2,
+  "gold": [
+   "mh-4019f4829a74",
+   "mh-e32ebf885a53"
+  ],
+  "bridge": [
+   "Charles Maigne"
+  ]
+ },
+ {
+  "id": "f48a4ace0bdd11eba7f7acde48001122",
+  "question": "Who is the spouse of the director of film Tonta, Tonta, Pero No Tanto?",
+  "answer": "Mapy Cortés",
+  "hops": 2,
+  "gold": [
+   "mh-7a314254e670",
+   "mh-f01a6c9b519d"
+  ],
+  "bridge": [
+   "Fernando Cortés"
+  ]
+ },
+ {
+  "id": "f5aba0260bdb11eba7f7acde48001122",
+  "question": "Where did William Louis, Prince Of Anhalt-Harzgerode's father die?",
+  "answer": "Plötzkau",
+  "hops": 2,
+  "gold": [
+   "mh-99c836e59c81",
+   "mh-0a4418305621"
+  ],
+  "bridge": [
+   "Frederick, Prince of Anhalt-Harzgerode"
+  ]
+ },
+ {
+  "id": "13fc53700bde11eba7f7acde48001122",
+  "question": "What is the place of birth of the director of film The Great Dome Robbery?",
+  "answer": "British",
+  "hops": 2,
+  "gold": [
+   "mh-99c27f6a2a09",
+   "mh-6311e73171a3"
+  ],
+  "bridge": [
+   "Gabriel Range"
+  ]
+ },
+ {
+  "id": "9a7f003a0bdb11eba7f7acde48001122",
+  "question": "Who is the father of the director of film Summer Skin (Film)?",
+  "answer": "Leopoldo Torres Ríos",
+  "hops": 2,
+  "gold": [
+   "mh-5c4d904ffdb0",
+   "mh-c3ccf1a33032"
+  ],
+  "bridge": [
+   "Leopoldo Torre Nilsson"
+  ]
+ },
+ {
+  "id": "121ddeae0bdc11eba7f7acde48001122",
+  "question": "What nationality is Hypsicratea's husband?",
+  "answer": "Kingdom of Pontus",
+  "hops": 2,
+  "gold": [
+   "mh-8cf5e2483d28",
+   "mh-1a75731fc54a"
+  ],
+  "bridge": []
+ }
+]

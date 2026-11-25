@@ -1,0 +1,36 @@
+system                      n    R@2    R@5  R@5 2hop
+bfs_only:graph             20  0.850  0.950     0.950
+depth1:graph               20  0.825  0.925     0.925
+full:graph                 20  0.825  0.925     0.925
+full:hybrid                20  0.475  0.900     0.900
+full:mix                   20  0.550  0.875     0.875
+full:naive                 20  0.625  0.800     0.800
+no_flow_rank:graph         20  0.825  0.950     0.950
+no_structure:graph         20  0.825  0.950     0.950
+
+paired vs full:graph on Recall@5 (questions answered by both)
+bfs_only:graph           Δ=+0.025  95% CI [+0.000, +0.075]  Wilcoxon p=0.317
+depth1:graph             identical
+full:hybrid              Δ=-0.025  95% CI [-0.075, +0.000]  Wilcoxon p=0.317
+full:mix                 Δ=-0.050  95% CI [-0.125, +0.000]  Wilcoxon p=0.157
+full:naive               Δ=-0.125  95% CI [-0.250, +0.000]  Wilcoxon p=0.0588
+no_flow_rank:graph       Δ=+0.025  95% CI [+0.000, +0.075]  Wilcoxon p=0.317
+no_structure:graph       Δ=+0.025  95% CI [+0.000, +0.075]  Wilcoxon p=0.317
+
+bridge entity rank (18 questions with a bridge entity; graph-based modes)
+system                      n  Hit@5 Hit@10    MRR
+bfs_only:graph             18  0.889  0.944  0.613
+depth1:graph               18  0.889  0.944  0.474
+full:graph                 18  0.889  0.944  0.474
+full:hybrid                18  0.889  0.944  0.458
+full:mix                   18  0.889  0.944  0.458
+no_flow_rank:graph         18  0.889  0.944  0.461
+no_structure:graph         18  0.889  0.944  0.461
+
+paired vs full:graph on bridge reciprocal rank
+bfs_only:graph           Δ=+0.138  95% CI [-0.047, +0.319]  Wilcoxon p=0.139
+depth1:graph             identical
+full:hybrid              Δ=-0.017  95% CI [-0.048, +0.000]  Wilcoxon p=0.18
+full:mix                 Δ=-0.017  95% CI [-0.048, +0.000]  Wilcoxon p=0.18
+no_flow_rank:graph       Δ=-0.014  95% CI [-0.042, +0.000]  Wilcoxon p=0.317
+no_structure:graph       Δ=-0.014  95% CI [-0.042, +0.000]  Wilcoxon p=0.317
