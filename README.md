@@ -50,7 +50,7 @@ The BFS flow initializes a Personalized PageRank iteration over the collected su
 
 ### 4. Evaluation and graph-quality workflow
 
-The `eval/` tooling generates query sets, runs retrieval-mode comparisons, evaluates responses, performs pairwise judging, and produces dashboards. Graph audit and cleanup utilities identify noisy or duplicate nodes before evaluation.
+The `eval/` tooling generates query sets (including synthetic multi-hop queries), runs retrieval-mode comparisons, and scores answers with BERTScore and RAGAS. Pairwise judging and bootstrap significance tests validate that retrieval improvements are not noise, and a dashboard summarizes per-mode and per-query-type results. Graph audit and cleanup utilities identify noisy or duplicate nodes before evaluation. See [`eval/README_SERVER.md`](eval/README_SERVER.md) for the full benchmark setup.
 
 ## Reproduction
 

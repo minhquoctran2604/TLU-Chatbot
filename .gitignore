@@ -57,6 +57,8 @@ data/
 lightrag/evaluation/results/
 eval/results/
 eval/*.pkl
+eval/cleanup_plan.json
+eval/dashboard.html
 
 # Miscellaneous
 .DS_Store

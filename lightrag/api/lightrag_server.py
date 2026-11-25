@@ -494,6 +494,7 @@ def create_app(args):
         Primary = args.llm_model; on rate-limit/error, walks failover chain.
         Cooldown: failed model skipped for LLM_COOLDOWN_SEC (default 60s).
         """
+        import asyncio
         import time
         from lightrag.llm.openai import openai_complete_if_cache
 
@@ -507,6 +508,11 @@ def create_app(args):
                     _failover_models.append(m)
         _cooldown: dict[str, float] = {}
         _COOLDOWN_SEC = int(os.getenv("LLM_COOLDOWN_SEC", "60"))
+        # LLM_ROUTING=roundrobin spreads calls over the whole chain (each call starts at the next model)
+        # instead of sending everything to the first healthy one: with free tiers the combined
+        # per-minute quota is the sum over models, not the quota of whichever model is first.
+        _round_robin = os.getenv("LLM_ROUTING", "failover").lower() == "roundrobin"
+        _rr_next = [0]
 
         if len(_failover_models) > 1:
             logger.info(
@@ -531,14 +537,38 @@ def create_app(args):
             if config_cache.openai_llm_options:
                 kwargs.update(config_cache.openai_llm_options)
 
-            now = time.time()
             last_err: Exception | None = None
-            for model in _failover_models:
+            # round-robin: keep cycling (waiting out cooldowns) for up to 10 min instead of failing the call
+            deadline = time.time() + (600 if _round_robin else 0)
+            while True:
+                now = time.time()
+                order = _failover_models
+                if _round_robin:
+                    i = _rr_next[0] % len(_failover_models)
+                    _rr_next[0] += 1
+                    order = _failover_models[i:] + _failover_models[:i]
+                    while all(_cooldown.get(m, 0) > time.time() for m in order) and time.time() < deadline:
+                        await asyncio.sleep(max(1.0, min(_cooldown.values()) - time.time()))
+                    now = time.time()
+                result = await _try_models(order, now, prompt, system_prompt, history_messages, kwargs, last_err)
+                if result[0]:
+                    return result[1]
+                last_err = result[1]
+                if time.time() >= deadline:
+                    break
+            # All providers exhausted.
+            raise RuntimeError(
+                f"LLM failover exhausted all {len(_failover_models)} providers. "
+                f"Last error: {last_err}"
+            )
+
+        async def _try_models(order, now, prompt, system_prompt, history_messages, kwargs, last_err):
+            for model in order:
                 if _cooldown.get(model, 0) > now:
                     logger.debug(f"LLM failover: skip {model} (cooldown)")
                     continue
                 try:
-                    return await openai_complete_if_cache(
+                    return True, await openai_complete_if_cache(
                         model,
                         prompt,
                         system_prompt=system_prompt,
@@ -557,7 +587,7 @@ def create_app(args):
                         or "exhausted" in err_str.lower()
                     )
                     if is_rate_limit:
-                        _cooldown[model] = now + _COOLDOWN_SEC
+                        _cooldown[model] = time.time() + _COOLDOWN_SEC
                         logger.warning(
                             f"LLM failover: {model} rate-limited, "
                             f"cooldown {_COOLDOWN_SEC}s. Trying next."
@@ -568,11 +598,7 @@ def create_app(args):
                             f"Trying next."
                         )
                     continue
-            # All providers exhausted.
-            raise RuntimeError(
-                f"LLM failover exhausted all {len(_failover_models)} providers. "
-                f"Last error: {last_err}"
-            )
+            return False, last_err
 
         return optimized_openai_alike_model_complete
 

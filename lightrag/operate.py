@@ -3779,7 +3779,7 @@ async def _perform_graph_ego_walk(
         4. Collect entities + edges + chunks
 
     Edge ranking uses PathRAG-style flow propagation (degree-normalized resource decay)
-    instead of raw static edge weight. Each seed starts with flow=1.0; a node passes
+    instead of raw static edge weight. All seeds start with flow=1.0 at once; at each hop a node passes on the flow it received at the previous hop:
     S(child) = FLOW_ALPHA * S(parent) / degree(parent) to each neighbour. Division by the
     parent's TRUE degree damps hub nodes (a 100-edge hub dilutes each child to ~1/100),
     matching PathRAG (arXiv:2502.14902). A branch stops expanding once child flow drops
@@ -3838,7 +3838,7 @@ async def _perform_graph_ego_walk(
     if not seed_names:
         return [], []
 
-    # Step 2: Per-seed ego walk
+    # Step 2: Layered ego walk from all seeds
     # Edge metadata cache (populated during large-ego sort + reused for hl filter)
     edge_meta_cache = {}
     # Get seed degrees in batch
@@ -3848,10 +3848,7 @@ async def _perform_graph_ego_walk(
         logger.warning(f"[graph_ego_walk] node_degrees_batch failed: {e}")
         degrees = {n: 0 for n in seed_names}
 
-    # Collect visited entities + edges using BFS frontier expansion
-    visited_entities = {}  # name -> seed score (cosine from seed_hits)
     visited_edges = {}  # (src,tgt sorted) -> {src, tgt}
-    node_flow = {}  # name -> max flow score across all seeds (PathRAG-style resource propagation)
 
     # Prepare seed scores from VDB
     seed_score_map = {
@@ -3860,87 +3857,63 @@ async def _perform_graph_ego_walk(
         if hit.get("entity_name")
     }
 
-    for seed in seed_names:
-        seed_deg = degrees.get(seed, -1)
-        if not isinstance(seed_deg, (int, float)):
-            seed_deg = -1
-        # Node does not exist in graph → skip entirely
-        if seed_deg < 0:
-            continue
+    # Layered BFS flow propagation from all seeds at once (order-independent):
+    #   f_0(s) = 1 for every seed s in the graph
+    #   f_{t+1}(v) = sum over walked edges u->v of FLOW_ALPHA * f_t(u) / degree(u)
+    #   node_flow(v) = sum_t f_t(v)
+    # A node passes on only the flow it received at the previous hop (no re-propagation of
+    # already-spread flow), and keeps expanding only while that hop flow >= FLOW_THETA.
+    # Nodes below theta are still collected and scored. Division by the TRUE degree damps
+    # hubs (PathRAG, arXiv:2502.14902); the top-N cap only limits which edges are walked.
+    hop_flow = {
+        s: 1.0
+        for s in seed_names
+        if isinstance(degrees.get(s, -1), (int, float)) and degrees.get(s, -1) >= 0
+    }
+    node_flow = dict(hop_flow)
+    visited_entities = {s: seed_score_map.get(s, 0.0) for s in hop_flow}
 
-        # BFS expand with PathRAG-style flow propagation + adaptive early stopping.
-        # node_flow[node] = cumulative flow across all seeds (pure sum, every node
-        # uses the same += rule). Each seed self-injects +1.0; each BFS step adds
-        # +child_flow = α × parent_flow / degree. Bridge nodes accumulate naturally;
-        # a seed that is also a bridge keeps both its self-injection and incoming
-        # flow from other seeds' BFS. cosine is captured separately in
-        # seed_score_map (line 3857), so final rank at line 4108 stays clean.
-        frontier = {seed}
-        visited_local = {seed}
-        node_flow[seed] = node_flow.get(seed, 0.0) + 1.0
-        for _ in range(flow_max_depth):
-            if not frontier:
-                break
-            # Get edges for all frontier nodes
-            try:
-                edges_dict = await knowledge_graph_inst.get_nodes_edges_batch(list(frontier)) # lấy 1 đống cạnh của các node trong frontier, 
-                edges_dict = await knowledge_graph_inst.get_nodes_edges_batch(list(frontier)) # lấy 1 đống cạnh của các node trong frontier, 
-            except Exception as e:
-                logger.warning(f"[graph_ego_walk] get_nodes_edges_batch failed: {e}")
-                break
+    for _ in range(flow_max_depth):
+        frontier = [n for n, f in hop_flow.items() if f >= flow_theta]
+        if not frontier:
+            break
+        try:
+            edges_dict = await knowledge_graph_inst.get_nodes_edges_batch(frontier)
+        except Exception as e:
+            logger.warning(f"[graph_ego_walk] get_nodes_edges_batch failed: {e}")
+            break
 
-            next_frontier = set()
+        next_flow: dict[str, float] = {}
+        for node, edge_list in edges_dict.items():
+            if not edge_list or node not in hop_flow:
+                continue
+            # Per-node hub cap: keep top-N edges by static weight; flow still divides by TRUE degree.
+            true_degree = len(edge_list)
+            edges_to_walk = edge_list
+            if true_degree > large_top_n:
+                edge_pair_dicts = [{"src": e[0], "tgt": e[1]} for e in edge_list]
+                try:
+                    edge_meta = await knowledge_graph_inst.get_edges_batch(edge_pair_dicts)
+                    edge_meta_cache.update(edge_meta)
+                except Exception:
+                    edge_meta = {}
+                edges_to_walk = sorted(
+                    edge_list,
+                    key=lambda e: edge_meta.get((e[0], e[1]), {}).get("weight", 0.0),
+                    reverse=True,
+                )[:large_top_n]
 
-            # giới hạn hub trung tâm - node có nhiều cạnh
+            child_flow = flow_alpha * hop_flow[node] / max(true_degree, 1)
+            for e in edges_to_walk:
+                src, tgt = e[0], e[1]
+                other = tgt if src == node else src
+                visited_edges.setdefault(tuple(sorted([src, tgt])), {"src": src, "tgt": tgt})
+                next_flow[other] = next_flow.get(other, 0.0) + child_flow
 
-            # giới hạn hub trung tâm - node có nhiều cạnh
-            for node, edge_list in edges_dict.items():
-                if not edge_list:
-                    continue
-                # Per-node hub cap: any node with more than large_top_n neighbours is
-                # trimmed to its top-N edges by static weight (checked at EVERY node, not
-                # decided once at the seed). Flow still divides by the TRUE degree below.
-                true_degree = len(edge_list)
-                edges_to_walk = edge_list
-                if true_degree > large_top_n:
-                    edge_pair_dicts = [{"src": e[0], "tgt": e[1]} for e in edge_list]
-                    try:
-                        edge_meta = await knowledge_graph_inst.get_edges_batch(edge_pair_dicts)
-                        edge_meta_cache.update(edge_meta)
-                    except Exception:
-                        edge_meta = {}
-                    weighted = sorted(
-                        edge_list,
-                        key=lambda e: edge_meta.get((e[0], e[1]), {}).get("weight", 0.0),
-                        reverse=True,
-                    )
-                    edges_to_walk = weighted[:large_top_n]
-
-                # Flow decays by TRUE degree (hub damping), independent of the cap above.
-                parent_flow = node_flow.get(node, 0.0)
-                child_flow = flow_alpha * parent_flow / max(true_degree, 1)
-
-                for e in edges_to_walk:
-                    src, tgt = e[0], e[1]
-                    other = tgt if src == node else src
-                    edge_key = tuple(sorted([src, tgt]))
-                    visited_edges.setdefault(edge_key, {"src": src, "tgt": tgt})
-                    # Propagate flow to child (sum across seeds — rewards bridge nodes
-                    # reachable from multiple seeds, consistent with PPR linearity theorem).
-                    node_flow[other] = node_flow.get(other, 0.0) + child_flow
-                    if other not in visited_local:
-                        visited_local.add(other)
-                        # Child is still collected & scored above; the branch only keeps
-                        # expanding while flow stays above threshold (adaptive depth).
-                        if child_flow >= flow_theta:
-                            next_frontier.add(other)
-
-            frontier = next_frontier
-
-        # Record visited entities (seed entities keep VDB cosine; expanded nodes get 0)
-        for name in visited_local:
-            if name not in visited_entities:
-                visited_entities[name] = seed_score_map.get(name, 0.0)
+        for n, f in next_flow.items():
+            node_flow[n] = node_flow.get(n, 0.0) + f
+            visited_entities.setdefault(n, seed_score_map.get(n, 0.0))
+        hop_flow = next_flow
 
     if not visited_entities:
         logger.info("[graph_ego_walk] walk produced no entities")
@@ -3981,6 +3954,12 @@ async def _perform_graph_ego_walk(
             break
 
     node_flow = _v
+    # PPR's restart vector sums to 1, so PPR scores are ~10x smaller than BFS flow (seeds start at 1);
+    # with a fixed lambda that silently shrinks the structural term. GRAPH_FLOW_NORM=1 rescales v to max 1
+    # so BFS-only and BFS+PPR are compared on ranking shape alone (eval only; off = paper behaviour).
+    if _os.getenv("GRAPH_FLOW_NORM", "0") == "1":
+        _m = max(node_flow.values(), default=0.0) or 1.0
+        node_flow = {n: f / _m for n, f in node_flow.items()}
 
     # Step 3: hl_keyword edge filtering
     hl_keyword_set = set()
